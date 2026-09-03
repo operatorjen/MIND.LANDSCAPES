@@ -1,0 +1,17 @@
+export const WORLD_SEED_SCALE = 997
+export const TREE_CELL_SIZE = 12
+export const TREE_CELL_JITTER = 3.8
+export const TREE_SAMPLE_BOUND = 8.2
+export const STRUCTURE_CELL_SIZE = 112
+export const STRUCTURE_CELL_JITTER = 22
+export const STRUCTURE_VEGETATION_CLEARANCE = 34
+export const STRUCTURE_WATER_CLEARANCE = 0.45
+export const VEGETATION_WATER_CLEARANCE = 0.38
+export const PLANT_DETAIL_NEAR = 35
+export const PLANT_DETAIL_FAR = 42
+export const STAIR_STEP_COUNT = 12
+export const STAIR_WIDTH = 1.45
+export const UNDERGROUND_DESCENT = 5.6
+export const UNDERGROUND_CLEARANCE = 4.6
+export const TUNNEL_FACTOR_MIN = 0.48
+export const TUNNEL_FACTOR_MAX = 0.58

@@ -2,6 +2,8 @@
 
 A persistent generative landscape shaped by images and text.
 
+![A generated landscape at golden hour](screenshots/screen-01.png)
+
 ## Run
 
 Requires Node.js 18 or newer.

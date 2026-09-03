@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#89999d">
+    <meta name="description" content="A persistent generative landscape shaped by memories.">
+    <title>Mind Landscapes</title>
+    <link rel="stylesheet" href="./styles.css">
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "./vendor/three/three.module.min.js",
+          "three/addons/webxr/VRButton.js": "./vendor/three/VRButton.js"
+        }
+      }
+    </script>
+  </head>
+  <body aria-busy="true">
+    <canvas id="landscape" aria-label="An explorable generative landscape"></canvas>
+
+    <div id="loading-screen" class="loading-screen" role="status" aria-live="polite">
+      <div class="loading-mark" aria-hidden="true">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <p id="loading-message">Loading landscape...</p>
+    </div>
+
+    <main class="interface">
+
+      <nav class="actions" aria-label="World actions">
+        <button id="fullscreen-button" class="quiet-button" type="button">Fullscreen</button>
+        <button id="config-button" class="quiet-button" type="button">World</button>
+      </nav>
+
+      <section class="drop-prompt">
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+        <button id="choose-button" class="choose-button" type="button">Choose files</button>
+        <input id="content-input" type="file" accept="image/*,.txt,.md,text/plain,text/markdown" multiple hidden>
+      </section>
+    </main>
+
+    <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
+    </div>
+
+    <dialog id="config-dialog" class="world-dialog">
+      <form method="dialog" class="dialog-shell">
+        <header class="dialog-header">
+          <div>
+            <p class="eyebrow">World document</p>
+            <h2>Landscape memory</h2>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close world configuration">×</button>
+        </header>
+
+        <section class="memory-section">
+          <div class="section-heading">
+            <h3>Influences</h3>
+            <span id="memory-count">0 remembered</span>
+          </div>
+          <div id="memory-list" class="memory-list"></div>
+        </section>
+
+        <section class="rendering-section" aria-labelledby="rendering-heading">
+          <div>
+            <h3 id="rendering-heading">Rendering</h3>
+            <p id="quality-description">Automatic · Medium</p>
+          </div>
+          <label class="select-field">
+            <span>Quality</span>
+            <select id="quality-select">
+              <option value="auto">Auto</option>
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </label>
+          <label class="cycle-field">
+            <span>Day / night</span>
+            <input id="day-cycle-speed" type="range" min="0" max="4" step="0.25" value="1">
+            <output id="day-cycle-speed-value" for="day-cycle-speed">1×</output>
+          </label>
+          <label class="toggle-field">
+            <input id="reduced-motion-toggle" type="checkbox">
+            <span>Reduced motion</span>
+          </label>
+        </section>
+
+        <section class="document-section">
+          <label for="config-editor">Generated settings and overrides</label>
+          <p>Edit <code>overrides</code> to preserve choices when source material changes.</p>
+          <textarea id="config-editor" spellcheck="false"></textarea>
+          <p id="config-message" class="config-message" aria-live="polite"></p>
+        </section>
+
+        <footer class="dialog-footer">
+          <button id="export-button" class="text-button" type="button">Export JSON</button>
+          <button id="apply-button" class="primary-button" type="button">Apply changes</button>
+        </footer>
+      </form>
+    </dialog>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

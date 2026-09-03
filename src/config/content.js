@@ -1,0 +1,12 @@
+export const MAX_AI_TEXT_LENGTH = 12_000
+export const MAX_INTERPRETATION_SUMMARY_LENGTH = 320
+export const MAX_SOURCE_NAME_LENGTH = 180
+export const IMAGE_ANALYSIS_SIZE = 64
+export const IMAGE_ALPHA_THRESHOLD = 32
+export const PALETTE_COLOR_LIMIT = 6
+export const VISION_IMAGE_LIMIT = 384
+export const VISION_IMAGE_QUALITY = 0.76
+export const TEXT_EXCERPT_LENGTH = 180
+export const QUALITY_LABEL_LIMIT = 3
+export const TITLE_WORD_LIMIT = 5
+export const TITLE_CHARACTER_LIMIT = 34
