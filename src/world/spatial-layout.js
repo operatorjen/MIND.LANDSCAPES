@@ -85,10 +85,11 @@ function structureFloorHeight(local, layout, surfaceHeight) {
     surfaceHeight = Math.min(surfaceHeight, layout.ground - stepped * underground.descent)
   }
 
-  if (Math.abs(local.x - underground.stairX) < underground.chamberHalfX
-    && local.z <= underground.chamberStart
-    && local.z >= underground.chamberEnd) {
-    surfaceHeight = Math.min(surfaceHeight, layout.ground - underground.descent)
+  if (local.z <= underground.chamberStart && local.z >= underground.chamberEnd) {
+    const corridorX = undergroundCenterXAt(local.z, underground, layout)
+    if (Math.abs(local.x - corridorX) < underground.chamberHalfX) {
+      surfaceHeight = Math.min(surfaceHeight, layout.ground - underground.descent)
+    }
   }
 
   return surfaceHeight
@@ -104,7 +105,8 @@ export function portalDestinationAt(position, settings, seed) {
       if (!source) continue
       const local = structureLocal(position.x - source.centerX, position.z - source.centerZ, source.angle)
       const underground = undergroundLayout(source)
-      const atPortal = Math.abs(local.x - underground.stairX) < underground.chamberHalfX - 0.45
+      const portalX = undergroundCenterXAt(underground.portalZ, underground, source)
+      const atPortal = Math.abs(local.x - portalX) < underground.chamberHalfX - 0.45
         && local.z <= underground.portalZ + 0.9
         && local.z >= underground.portalZ - 0.35
         && position.y < source.ground - 0.8
@@ -113,9 +115,10 @@ export function portalDestinationAt(position, settings, seed) {
       const destination = findPortalDestination(source, settings, seed)
       if (!destination) return null
       const destinationUnderground = undergroundLayout(destination)
+      const exitZ = destinationUnderground.portalZ + 1.55
       const exit = structureWorld(
-        destinationUnderground.stairX,
-        destinationUnderground.portalZ + 1.55,
+        undergroundCenterXAt(exitZ, destinationUnderground, destination),
+        exitZ,
         destination
       )
       return {
@@ -142,7 +145,8 @@ export function isUndergroundAt(x, z, settings, seed) {
       const onStairs = Math.abs(local.x - underground.stairX) < underground.stairWidth
         && local.z < underground.stairStart - 0.05
         && local.z >= underground.stairEnd
-      const inChamber = Math.abs(local.x - underground.stairX) < underground.chamberHalfX
+      const corridorX = undergroundCenterXAt(local.z, underground, layout)
+      const inChamber = Math.abs(local.x - corridorX) < underground.chamberHalfX
         && local.z <= underground.chamberStart
         && local.z >= underground.chamberEnd
       if (onStairs || inChamber) return true
@@ -177,6 +181,7 @@ function findPortalDestination(source, settings, seed) {
 
 function undergroundLayout(layout) {
   const stairEnd = -layout.depth * 0.14
+  const chamberEnd = -layout.depth * Math.min(0.84, layout.tunnelFactor + 0.25)
   return {
     stairX: (layout.variant > 0.5 ? 1 : -1) * layout.width * 0.22,
     stairStart: layout.depth * 0.2,
@@ -184,9 +189,34 @@ function undergroundLayout(layout) {
     stairWidth: STAIR_WIDTH,
     chamberHalfX: layout.width * 0.2,
     chamberStart: stairEnd + 0.2,
-    portalZ: -layout.depth * layout.tunnelFactor,
-    chamberEnd: -layout.depth * Math.min(0.7, layout.tunnelFactor + 0.12),
+    portalZ: chamberEnd + 0.62,
+    chamberEnd,
     descent: UNDERGROUND_DESCENT
+  }
+}
+
+function undergroundCenterXAt(z, underground, layout) {
+  const progress = clamp(
+    (underground.chamberStart - z) / (underground.chamberStart - underground.chamberEnd),
+    0,
+    1
+  )
+  const envelope = smoothstep(0, 0.18, progress)
+  const phase = layout.variant * Math.PI * 2 + layout.style * 1.17
+  const primary = Math.sin(progress * 5.2 + phase) - Math.sin(phase)
+  const secondaryPhase = phase * 0.61
+  const secondary = Math.sin(progress * 10.7 + secondaryPhase) - Math.sin(secondaryPhase)
+  const offset = envelope * underground.chamberHalfX * 0.32 * (primary * 0.68 + secondary * 0.24)
+  return underground.stairX + offset
+}
+
+export function undergroundPathAt(layout, progress) {
+  const underground = undergroundLayout(layout)
+  const amount = clamp(progress, 0, 1)
+  const z = mix(underground.chamberStart, underground.chamberEnd, amount)
+  return {
+    x: undergroundCenterXAt(z, underground, layout),
+    z
   }
 }
 
@@ -351,8 +381,9 @@ function isBlockedByUnderground(local, worldY, layout, radius) {
     && local.z >= underground.chamberEnd - radius
   const stairWall = Math.abs(local.x - underground.stairX) >= underground.stairWidth - radius
     && Math.abs(local.x - underground.stairX) < underground.stairWidth + layout.wall + radius
-  const chamberWall = Math.abs(local.x - underground.stairX) >= underground.chamberHalfX - radius
-    && Math.abs(local.x - underground.stairX) < underground.chamberHalfX + layout.wall + radius
+  const corridorX = undergroundCenterXAt(local.z, underground, layout)
+  const chamberWall = Math.abs(local.x - corridorX) >= underground.chamberHalfX - radius
+    && Math.abs(local.x - corridorX) < underground.chamberHalfX + layout.wall + radius
 
   return stairSpan && stairWall || chamberSpan && chamberWall
 }

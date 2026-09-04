@@ -5,6 +5,23 @@ export const coreGlsl = `
     return mat2(cosine, -sine, sine, cosine);
   }
 
+  float undergroundCenterOffset(
+    float z,
+    float chamberStart,
+    float chamberEnd,
+    float chamberHalfX,
+    float variant,
+    float structureStyle
+  ) {
+    float progress = clamp((chamberStart - z) / (chamberStart - chamberEnd), 0.0, 1.0);
+    float envelope = smoothstep(0.0, 0.18, progress);
+    float phase = variant * 6.2831853 + structureStyle * 1.17;
+    float primary = sin(progress * 5.2 + phase) - sin(phase);
+    float secondaryPhase = phase * 0.61;
+    float secondary = sin(progress * 10.7 + secondaryPhase) - sin(secondaryPhase);
+    return envelope * chamberHalfX * 0.32 * (primary * 0.68 + secondary * 0.24);
+  }
+
   float hash21(vec2 point) {
     point = fract(point * vec2(123.34, 456.21));
     point += dot(point, point + 45.32 + uSeed * 0.001);

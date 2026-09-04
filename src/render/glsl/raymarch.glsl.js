@@ -34,6 +34,7 @@ export const raymarchGlsl = `
     return -1.0;
   }
 
+  #if ENABLE_SCENE_REFLECTIONS == 1
   float marchReflection(vec3 origin, vec3 direction, float detail, out vec3 position, out float material) {
     float distanceFromWater = 0.1;
     float reflectionSteps = min(mix(10.0, float(MAX_REFLECTION_STEPS), detail), uRaySteps * 0.24);
@@ -55,4 +56,5 @@ export const raymarchGlsl = `
 
     return -1.0;
   }
+  #endif
 `

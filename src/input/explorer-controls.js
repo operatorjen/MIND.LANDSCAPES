@@ -5,7 +5,6 @@ const EYE_HEIGHT = 1.82
 const WATER_EYE_CLEARANCE = 1.58
 const PLAYER_RADIUS = 0.46
 const COLLISION_LOOKAHEAD = 0.3
-const MAX_STEP_RISE = 0.68
 const ESCAPE_STEP = 0.14
 const ESCAPE_RINGS = 22
 const ESCAPE_DIRECTIONS = 16
@@ -47,31 +46,38 @@ export class ExplorerControls {
   }
 
   bind() {
-    this.canvas.addEventListener('pointerdown', (event) => {
+    this.handlePointerDown = (event) => {
       if (event.button !== 0) return
       this.dragging = true
       this.canvas.setPointerCapture(event.pointerId)
-    })
+    }
 
-    this.canvas.addEventListener('pointermove', (event) => {
+    this.handlePointerMove = (event) => {
       if (!this.dragging) return
       this.yaw -= event.movementX * LOOK_SENSITIVITY
       this.pitch = THREE.MathUtils.clamp(this.pitch - event.movementY * LOOK_SENSITIVITY, MIN_PITCH, MAX_PITCH)
       this.applyRotation()
-    })
+    }
 
-    this.canvas.addEventListener('pointerup', (event) => {
+    this.handlePointerUp = (event) => {
       this.dragging = false
-      this.canvas.releasePointerCapture(event.pointerId)
-    })
+      if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
+    }
 
-    window.addEventListener('keydown', (event) => {
+    this.handleKeyDown = (event) => {
       if (event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLInputElement) return
       this.keys.add(event.code)
-    })
+    }
+    this.handleKeyUp = (event) => this.keys.delete(event.code)
+    this.handleBlur = () => this.keys.clear()
 
-    window.addEventListener('keyup', (event) => this.keys.delete(event.code))
-    window.addEventListener('blur', () => this.keys.clear())
+    this.canvas.addEventListener('pointerdown', this.handlePointerDown)
+    this.canvas.addEventListener('pointermove', this.handlePointerMove)
+    this.canvas.addEventListener('pointerup', this.handlePointerUp)
+    this.canvas.addEventListener('pointercancel', this.handlePointerUp)
+    window.addEventListener('keydown', this.handleKeyDown)
+    window.addEventListener('keyup', this.handleKeyUp)
+    window.addEventListener('blur', this.handleBlur)
   }
 
   applyRotation() {
@@ -115,8 +121,7 @@ export class ExplorerControls {
       const nextX = startX + stepX
       const nextZ = startZ + stepZ
 
-      if (!this.isBlockedAt(nextX + lookX, nextZ + lookZ, settings, seed)
-        && !this.isLedgeAt(startX, startZ, nextX, nextZ, settings, seed)) {
+      if (!this.isBlockedAt(nextX + lookX, nextZ + lookZ, settings, seed)) {
         this.camera.position.setX(nextX)
         this.camera.position.setZ(nextZ)
         this.raiseToSurface(settings, seed)
@@ -124,8 +129,7 @@ export class ExplorerControls {
       }
 
       let moved = false
-      if (!this.isBlockedAt(nextX + lookX, startZ, settings, seed)
-        && !this.isLedgeAt(startX, startZ, nextX, startZ, settings, seed)) {
+      if (!this.isBlockedAt(nextX + lookX, startZ, settings, seed)) {
         this.camera.position.setX(nextX)
         this.raiseToSurface(settings, seed)
         moved = true
@@ -134,8 +138,7 @@ export class ExplorerControls {
       }
 
       const slideX = this.camera.position.x
-      if (!this.isBlockedAt(slideX, nextZ + lookZ, settings, seed)
-        && !this.isLedgeAt(slideX, startZ, slideX, nextZ, settings, seed)) {
+      if (!this.isBlockedAt(slideX, nextZ + lookZ, settings, seed)) {
         this.camera.position.setZ(nextZ)
         this.raiseToSurface(settings, seed)
         moved = true
@@ -169,12 +172,6 @@ export class ExplorerControls {
     this.yaw -= destination.rotation
     this.applyRotation()
     this.portalCooldown = PORTAL_COOLDOWN
-  }
-
-  isLedgeAt(fromX, fromZ, toX, toZ, settings, seed) {
-    const currentGround = terrainHeightAt(fromX, fromZ, settings, seed)
-    const nextGround = terrainHeightAt(toX, toZ, settings, seed)
-    return nextGround - currentGround > MAX_STEP_RISE
   }
 
   raiseToSurface(settings, seed) {
@@ -217,5 +214,16 @@ export class ExplorerControls {
         return
       }
     }
+  }
+
+  dispose() {
+    this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
+    this.canvas.removeEventListener('pointermove', this.handlePointerMove)
+    this.canvas.removeEventListener('pointerup', this.handlePointerUp)
+    this.canvas.removeEventListener('pointercancel', this.handlePointerUp)
+    window.removeEventListener('keydown', this.handleKeyDown)
+    window.removeEventListener('keyup', this.handleKeyUp)
+    window.removeEventListener('blur', this.handleBlur)
+    this.keys.clear()
   }
 }

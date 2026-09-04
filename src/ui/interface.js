@@ -20,48 +20,54 @@ export class Interface {
     this.reducedMotionToggle = document.querySelector('#reduced-motion-toggle')
     this.qualityDescription = document.querySelector('#quality-description')
     this.dragDepth = 0
+    this.listeners = []
     this.bindActions()
-    this.quality.subscribe((profile) => this.renderQuality(profile))
+    this.unsubscribeQuality = this.quality.subscribe((profile) => this.renderQuality(profile))
+  }
+
+  listen(target, type, listener, options) {
+    target.addEventListener(type, listener, options)
+    this.listeners.push([target, type, listener, options])
   }
 
   bindActions() {
-    document.querySelector('#config-button').addEventListener('click', () => this.open())
-    document.querySelector('#fullscreen-button').addEventListener('click', () => this.toggleFullscreen())
-    document.querySelector('#choose-button').addEventListener('click', () => this.contentInput.click())
-    document.querySelector('#apply-button').addEventListener('click', () => this.apply())
-    document.querySelector('#export-button').addEventListener('click', () => this.export())
-    this.qualitySelect.addEventListener('change', () => this.quality.setMode(this.qualitySelect.value))
-    this.dayCycleSpeed.addEventListener('input', () => this.renderDayCycleSpeed(this.dayCycleSpeed.value))
-    this.dayCycleSpeed.addEventListener('change', () => this.world.setDayCycleSpeed(this.dayCycleSpeed.value))
-    this.reducedMotionToggle.addEventListener('change', () => this.quality.setReducedMotion(this.reducedMotionToggle.checked))
-    this.memoryList.addEventListener('click', (event) => {
+    this.listen(document.querySelector('#config-button'), 'click', () => this.open())
+    this.listen(document.querySelector('#fullscreen-button'), 'click', () => this.toggleFullscreen())
+    this.listen(document.querySelector('#choose-button'), 'click', () => this.contentInput.click())
+    this.listen(document.querySelector('#apply-button'), 'click', () => this.apply())
+    this.listen(document.querySelector('#export-button'), 'click', () => this.export())
+    this.listen(this.qualitySelect, 'change', () => this.quality.setMode(this.qualitySelect.value))
+    this.listen(this.dayCycleSpeed, 'input', () => this.renderDayCycleSpeed(this.dayCycleSpeed.value))
+    this.listen(this.dayCycleSpeed, 'change', () => this.world.setDayCycleSpeed(this.dayCycleSpeed.value))
+    this.listen(this.reducedMotionToggle, 'change', () => this.quality.setReducedMotion(this.reducedMotionToggle.checked))
+    this.listen(this.memoryList, 'click', (event) => {
       const button = event.target.closest('[data-remove]')
       if (button) this.world.remove(button.dataset.remove)
     })
-    window.addEventListener('keydown', (event) => {
+    this.listen(window, 'keydown', (event) => {
       if (event.code === 'KeyC' && !(event.target instanceof HTMLTextAreaElement)) this.open()
     })
   }
 
   bindDrop(handler) {
-    this.contentInput.addEventListener('change', async () => {
+    this.listen(this.contentInput, 'change', async () => {
       if (!this.contentInput.files.length) return
       await handler({ files: this.contentInput.files, getData: () => '' })
       this.contentInput.value = ''
     })
 
-    window.addEventListener('dragenter', (event) => {
+    this.listen(window, 'dragenter', (event) => {
       event.preventDefault()
       this.dragDepth++
       this.overlay.classList.add('visible')
     })
 
-    window.addEventListener('dragover', (event) => {
+    this.listen(window, 'dragover', (event) => {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
     })
 
-    window.addEventListener('dragleave', (event) => {
+    this.listen(window, 'dragleave', (event) => {
       event.preventDefault()
       this.dragDepth--
       if (this.dragDepth <= 0) {
@@ -70,7 +76,7 @@ export class Interface {
       }
     })
 
-    window.addEventListener('drop', async (event) => {
+    this.listen(window, 'drop', async (event) => {
       event.preventDefault()
       this.dragDepth = 0
       this.overlay.classList.remove('visible')
@@ -173,5 +179,13 @@ export class Interface {
   async toggleFullscreen() {
     if (document.fullscreenElement) await document.exitFullscreen()
     else await document.documentElement.requestFullscreen()
+  }
+
+  dispose() {
+    this.unsubscribeQuality?.()
+    for (const [target, type, listener, options] of this.listeners) {
+      target.removeEventListener(type, listener, options)
+    }
+    this.listeners.length = 0
   }
 }

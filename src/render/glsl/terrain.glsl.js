@@ -18,9 +18,8 @@ export const terrainGlsl = `
   vec2 structureCenterForCell(vec2 cell);
   float structurePresence();
 
-  float terrainFoundation(vec2 point) {
+  float terrainFoundationSample(vec2 folded, float river) {
     float scale = uTerrainScale;
-    vec2 folded = foldedPoint(point);
     float broad = sin(folded.x * 0.038 * scale) * 0.8 + cos(folded.y * 0.031 * scale) * 0.68;
     float crossed = sin((folded.x + folded.y) * 0.017 * scale) * 0.5 + cos((folded.x - folded.y) * 0.023 * scale) * 0.35;
     float shaped = (broad + crossed) * uTerrainAmplitude * 1.55;
@@ -32,18 +31,23 @@ export const terrainGlsl = `
     float duneWave = 0.5 + 0.5 * sin(folded.x * 0.42 + sin(folded.y * 0.06) * 2.4);
     float dunes = duneWave * duneRegion * sqrt(max(uDunes, 0.0)) * 1.45;
     float height = shaped + peaks - valleys + dunes - 0.2;
-    float river = clamp(riverMask(point), 0.0, 1.0);
     return mix(height, min(height, uWaterLevel - 0.28), river);
+  }
+
+  float terrainFoundation(vec2 point) {
+    vec2 folded = foldedPoint(point);
+    float river = clamp(riverMask(point), 0.0, 1.0);
+    return terrainFoundationSample(folded, river);
   }
 
   float terrainBaseHeight(vec2 point) {
     float scale = uTerrainScale;
     vec2 folded = foldedPoint(point);
-    float foundation = terrainFoundation(point);
+    float river = clamp(riverMask(point), 0.0, 1.0);
+    float foundation = terrainFoundationSample(folded, river);
     float detail = (fbm(folded * 0.045 * scale + uSeed) - 0.5) * uTerrainRoughness * 2.6;
     float ridges = pow(abs(fbm(folded * 0.018 * scale - uSeed * 0.3) * 2.0 - 1.0), 2.0);
     float height = foundation + detail + ridges * uTerrainRoughness * 1.2;
-    float river = clamp(riverMask(point), 0.0, 1.0);
     height = mix(height, min(height, uWaterLevel - 0.28), river);
     float stepped = floor(height * 3.0) / 3.0;
     return mix(height, stepped, clamp(uTerraces * 0.16, 0.0, 0.28));
@@ -57,7 +61,7 @@ export const terrainGlsl = `
 
     vec2 center = structureCenterForCell(cell);
     vec2 planar = point - center;
-    if (max(abs(planar.x), abs(planar.y)) > 36.0) return height;
+    if (max(abs(planar.x), abs(planar.y)) > 38.0) return height;
     float ground = terrainFoundation(center);
     if (ground < uWaterLevel + STRUCTURE_WATER_CLEARANCE) return height;
 
@@ -82,6 +86,14 @@ export const terrainGlsl = `
       + uPsychedelicIntensity * 0.18
     );
     float tunnelFactor = mix(TUNNEL_FACTOR_MIN, TUNNEL_FACTOR_MAX, tunnelRoll);
+    float styleRoll = fract(
+      hash21(cell + 155.4)
+      + uMechanicalIntensity * 0.21
+      + uRitualIntensity * 0.33
+      + uOrnateInteriors * 0.17
+      + uAbandonedInteriors * 0.13
+    );
+    float structureStyle = floor(styleRoll * 4.0);
     if (abs(local.x - stairX) < STAIR_WIDTH && local.y <= stairStart && local.y >= stairEnd) {
       float stairProgress = clamp((stairStart - local.y) / (stairStart - stairEnd), 0.0, 1.0);
       float stepped = floor(stairProgress * STAIR_STEPS) / STAIR_STEPS;
@@ -90,8 +102,9 @@ export const terrainGlsl = `
 
     float chamberHalfX = width * 0.2;
     float chamberStart = stairEnd + 0.2;
-    float chamberEnd = -depth * min(0.7, tunnelFactor + 0.12);
-    if (abs(local.x - stairX) < chamberHalfX && local.y <= chamberStart && local.y >= chamberEnd) {
+    float chamberEnd = -depth * min(0.84, tunnelFactor + 0.25);
+    float corridorX = stairX + undergroundCenterOffset(local.y, chamberStart, chamberEnd, chamberHalfX, variant, structureStyle);
+    if (abs(local.x - corridorX) < chamberHalfX && local.y <= chamberStart && local.y >= chamberEnd) {
       height = min(height, ground - UNDERGROUND_DESCENT);
     }
     return height;

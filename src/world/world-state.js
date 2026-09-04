@@ -171,6 +171,11 @@ export class WorldState {
     await this.repository.save(this.document)
     for (const listener of this.listeners) listener(this.document)
   }
+
+  dispose() {
+    this.listeners.clear()
+    this.repository.dispose()
+  }
 }
 
 class WorldRepository {
@@ -207,6 +212,10 @@ class WorldRepository {
       request.onerror = () => reject(request.error)
     })
   }
+
+  dispose() {
+    this.database.close()
+  }
 }
 
 class MemoryRepository {
@@ -217,6 +226,8 @@ class MemoryRepository {
   save() {
     return Promise.resolve()
   }
+
+  dispose() {}
 }
 
 function createWorld() {

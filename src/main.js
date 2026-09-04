@@ -5,11 +5,14 @@ const loadingStarted = performance.now()
 const loadingScreen = document.querySelector('#loading-screen')
 const loadingMessage = document.querySelector('#loading-message')
 
-for (const eventName of ['dragenter', 'dragover', 'drop']) {
-  window.addEventListener(eventName, (event) => event.preventDefault(), { capture: true })
-}
+const preventWindowDrop = (event) => event.preventDefault()
+for (const eventName of ['dragenter', 'dragover', 'drop']) window.addEventListener(eventName, preventWindowDrop, { capture: true })
 
 const app = new MindLandscape(document.querySelector('#landscape'))
+window.addEventListener('pagehide', () => {
+  app.dispose()
+  for (const eventName of ['dragenter', 'dragover', 'drop']) window.removeEventListener(eventName, preventWindowDrop, { capture: true })
+}, { once: true })
 
 app.start().then(revealLandscape).catch((error) => {
   console.error(error)

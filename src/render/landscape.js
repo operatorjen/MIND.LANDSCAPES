@@ -4,7 +4,7 @@ import {
   SKY_VOLUME_SIZE,
   UNIFORM_RESPONSE
 } from '../config/rendering.js'
-import { fragmentShader, vertexShader } from './shaders.js'
+import { fragmentShaders, vertexShader } from './shaders.js'
 import {
   createUniformState,
   createUniformTargets,
@@ -23,19 +23,29 @@ export class Landscape {
     const state = createUniformState(settings, seed, quality)
     this.targets = state.targets
     this.uniforms = state.uniforms
+    this.materials = new Map()
+    this.geometry = new THREE.BoxGeometry(SKY_VOLUME_SIZE, SKY_VOLUME_SIZE, SKY_VOLUME_SIZE)
+    this.mesh = new THREE.Mesh(this.geometry, this.materialForQuality(quality.level))
+    this.mesh.frustumCulled = false
+    this.mesh.renderOrder = -100
+    scene.add(this.mesh)
+  }
+
+  materialForQuality(level) {
+    const resolvedLevel = fragmentShaders[level] ? level : 'medium'
+    if (this.materials.has(resolvedLevel)) return this.materials.get(resolvedLevel)
     const material = new THREE.ShaderMaterial({
       uniforms: this.uniforms,
       vertexShader,
-      fragmentShader,
+      fragmentShader: fragmentShaders[resolvedLevel],
       side: THREE.BackSide,
       depthTest: false,
       depthWrite: false,
       toneMapped: false
     })
-    this.mesh = new THREE.Mesh(new THREE.BoxGeometry(SKY_VOLUME_SIZE, SKY_VOLUME_SIZE, SKY_VOLUME_SIZE), material)
-    this.mesh.frustumCulled = false
-    this.mesh.renderOrder = -100
-    scene.add(this.mesh)
+    material.name = `landscape-${resolvedLevel}`
+    this.materials.set(resolvedLevel, material)
+    return material
   }
 
   applySettings(settings, seed) {
@@ -49,6 +59,7 @@ export class Landscape {
 
   applyQuality(quality) {
     this.quality = quality
+    this.mesh.material = this.materialForQuality(quality.level)
     this.targets = createUniformTargets(this.settings, this.seed, quality)
     this.applyInstantUniforms()
   }
@@ -77,5 +88,16 @@ export class Landscape {
     for (const name of smoothColorUniforms) {
       this.uniforms[name].value.lerp(this.targets[name], amount)
     }
+  }
+
+  dispose() {
+    this.mesh.removeFromParent()
+    this.geometry.dispose()
+    for (const material of this.materials.values()) material.dispose()
+    this.materials.clear()
+  }
+
+  restoreContext() {
+    for (const material of this.materials.values()) material.needsUpdate = true
   }
 }

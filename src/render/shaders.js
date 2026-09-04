@@ -1,7 +1,8 @@
 import {
-  MAX_REFLECTION_STEPS,
-  MAX_SCENE_STEPS
+  QUALITY_LEVELS,
+  SHADER_VARIANTS
 } from '../config/rendering.js'
+import { materialConstantsGlsl } from '../config/materials.js'
 import {
   PLANT_DETAIL_FAR,
   PLANT_DETAIL_NEAR,
@@ -12,7 +13,9 @@ import {
   STRUCTURE_VEGETATION_CLEARANCE,
   STRUCTURE_WATER_CLEARANCE,
   TREE_CELL_JITTER,
+  TREE_CELL_MARCH_GUARD,
   TREE_CELL_SIZE,
+  TREE_MARCH_SCALE,
   TREE_SAMPLE_BOUND,
   TUNNEL_FACTOR_MAX,
   TUNNEL_FACTOR_MIN,
@@ -28,6 +31,7 @@ import { raymarchGlsl } from './glsl/raymarch.glsl.js'
 import { sceneGlsl } from './glsl/scene.glsl.js'
 import { terrainGlsl } from './glsl/terrain.glsl.js'
 import { vegetationGlsl } from './glsl/vegetation.glsl.js'
+import { materialGlsl } from './materials/catalog.js'
 
 export const vertexShader = `
   varying vec3 vWorldPosition;
@@ -40,12 +44,18 @@ export const vertexShader = `
   }
 `
 
-const shaderPreamble = `
+const shaderPreamble = (level) => {
+  const variant = SHADER_VARIANTS[level]
+  return `
   precision highp float;
+
+  #define SHADER_QUALITY_LEVEL ${variant.qualityLevel}
+  #define ENABLE_SCENE_REFLECTIONS ${variant.sceneReflections ? 1 : 0}
 
   const float TREE_CELL = ${TREE_CELL_SIZE.toFixed(1)};
   const float TREE_JITTER = ${TREE_CELL_JITTER.toFixed(1)};
   const float TREE_SAMPLE_LIMIT = ${TREE_SAMPLE_BOUND.toFixed(1)};
+  const float TREE_CELL_GUARD = ${TREE_CELL_MARCH_GUARD.toFixed(2)};
   const float STRUCTURE_CELL = ${STRUCTURE_CELL_SIZE.toFixed(1)};
   const float STRUCTURE_CELL_HALF = ${(STRUCTURE_CELL_SIZE * 0.5).toFixed(1)};
   const float STRUCTURE_JITTER = ${STRUCTURE_CELL_JITTER.toFixed(1)};
@@ -59,9 +69,9 @@ const shaderPreamble = `
   const float UNDERGROUND_DESCENT = ${UNDERGROUND_DESCENT.toFixed(1)};
   const float TUNNEL_FACTOR_MIN = ${TUNNEL_FACTOR_MIN.toFixed(2)};
   const float TUNNEL_FACTOR_MAX = ${TUNNEL_FACTOR_MAX.toFixed(2)};
-  const int MAX_SCENE_STEPS = ${MAX_SCENE_STEPS};
-  const int MAX_REFLECTION_STEPS = ${MAX_REFLECTION_STEPS};
-  const float TREE_MARCH_SCALE = 0.34;
+  const int MAX_SCENE_STEPS = ${variant.sceneSteps};
+  const int MAX_REFLECTION_STEPS = ${variant.reflectionSteps};
+  const float TREE_MARCH_SCALE = ${TREE_MARCH_SCALE.toFixed(2)};
   const float MIN_SCENE_STEP = 0.025;
   const float MAX_SCENE_STEP = 4.8;
   const float MIN_REFLECTION_STEP = 0.04;
@@ -71,6 +81,7 @@ const shaderPreamble = `
 
   varying vec3 vWorldPosition;
 `
+}
 
 const shaderMain = `
   void main() {
@@ -105,16 +116,27 @@ const shaderMain = `
   }
 `
 
-export const fragmentShader = [
-  shaderPreamble,
-  uniformDeclarations,
-  coreGlsl,
-  terrainGlsl,
-  vegetationGlsl,
-  architectureGlsl,
-  sceneGlsl,
-  atmosphereGlsl,
-  raymarchGlsl,
-  lightingGlsl,
-  shaderMain
-].join('\n')
+export function fragmentShaderForQuality(level = 'medium') {
+  const resolvedLevel = QUALITY_LEVELS.includes(level) ? level : 'medium'
+  return [
+    shaderPreamble(resolvedLevel),
+    materialConstantsGlsl,
+    uniformDeclarations,
+    coreGlsl,
+    terrainGlsl,
+    vegetationGlsl,
+    architectureGlsl,
+    sceneGlsl,
+    atmosphereGlsl,
+    raymarchGlsl,
+    materialGlsl,
+    lightingGlsl,
+    shaderMain
+  ].join('\n')
+}
+
+export const fragmentShaders = Object.freeze(Object.fromEntries(
+  QUALITY_LEVELS.map((level) => [level, fragmentShaderForQuality(level)])
+))
+
+export const fragmentShader = fragmentShaders.medium

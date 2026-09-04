@@ -4,7 +4,8 @@ import {
   isPositionBlocked,
   portalDestinationAt,
   structureLayout,
-  terrainHeightAt
+  terrainHeightAt,
+  undergroundPathAt
 } from '../src/world/spatial-layout.js'
 import { deriveSettings } from '../src/world/world-state.js'
 
@@ -64,13 +65,28 @@ test('structure collision preserves walls, nave, and doorway access', () => {
 test('underground portals resolve to a stable destination', () => {
   const settings = structureSettings()
   const layout = structureLayout(-3, -3, settings, SEED)
-  const stairX = (layout.variant > 0.5 ? 1 : -1) * layout.width * 0.22
-  const portalZ = -layout.depth * layout.tunnelFactor
-  const position = worldPoint(layout, stairX, portalZ, layout.ground - 2)
+  const portal = undergroundPathAt(layout, 0.98)
+  const position = worldPoint(layout, portal.x, portal.z, layout.ground - 2)
   const destination = portalDestinationAt(position, settings, SEED)
 
   assert.ok(destination)
   assert.deepEqual(destination, portalDestinationAt(position, settings, SEED))
   assert.notEqual(destination.x, position.x)
   assert.notEqual(destination.z, position.z)
+})
+
+test('underground corridors extend and meander along a traversable centerline', () => {
+  const settings = structureSettings()
+  const layout = structureLayout(-3, -3, settings, SEED)
+  const samples = Array.from({ length: 9 }, (_, index) => undergroundPathAt(layout, index / 8))
+  const start = samples[0]
+  const end = samples.at(-1)
+  const largestDeviation = Math.max(...samples.map(({ x }) => Math.abs(x - start.x)))
+
+  assert.ok(start.z - end.z > layout.depth * 0.55)
+  assert.ok(largestDeviation > layout.width * 0.035)
+  for (const sample of samples.slice(1, -1)) {
+    const position = worldPoint(layout, sample.x, sample.z, layout.ground - 3.4)
+    assert.equal(isPositionBlocked(position, settings, SEED, 0.34), false)
+  }
 })

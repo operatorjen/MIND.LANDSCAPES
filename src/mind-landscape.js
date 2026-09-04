@@ -18,10 +18,30 @@ export class MindLandscape {
     this.canvas = canvas
     this.timer = new THREE.Timer()
     this.timer.connect(document)
+    this.unsubscribers = []
+    this.contextLost = false
+    this.disposed = false
+    this.renderFrame = (time) => this.render(time)
+    this.handleResize = () => this.resize()
+    this.handleContextLost = (event) => {
+      event.preventDefault()
+      this.contextLost = true
+      this.renderer.setAnimationLoop(null)
+      this.interface?.setStatus('The graphics context paused. Restoring the landscape…')
+    }
+    this.handleContextRestored = () => {
+      if (this.disposed) return
+      this.contextLost = false
+      this.landscape.restoreContext()
+      this.resize()
+      this.renderer.setAnimationLoop(this.renderFrame)
+      this.interface?.setStatus('The landscape has been restored.')
+    }
   }
 
   async start() {
     this.world = await WorldState.create()
+    if (this.disposed) return
     this.quality = new QualityController()
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, CAMERA_NEAR, CAMERA_FAR)
@@ -49,15 +69,15 @@ export class MindLandscape {
     )
     this.interface = new Interface(this.world, this.quality)
 
-    this.world.subscribe((document) => {
+    this.unsubscribers.push(this.world.subscribe((document) => {
       this.landscape.applySettings(this.world.effectiveSettings, document.seed)
       this.interface.render(document)
-    })
+    }))
 
-    this.quality.subscribe((profile) => {
+    this.unsubscribers.push(this.quality.subscribe((profile) => {
       this.landscape.applyQuality(profile)
       this.resize()
-    })
+    }))
 
     this.interface.bindDrop(async (transfer) => {
       this.interface.setStatus('Reading the influence…')
@@ -80,11 +100,14 @@ export class MindLandscape {
     this.bindWindowEvents()
     this.resize()
     await this.addVRButton()
-    this.renderer.setAnimationLoop((time) => this.render(time))
+    if (this.disposed) return
+    this.renderer.setAnimationLoop(this.renderFrame)
   }
 
   bindWindowEvents() {
-    window.addEventListener('resize', () => this.resize())
+    window.addEventListener('resize', this.handleResize)
+    this.canvas.addEventListener('webglcontextlost', this.handleContextLost)
+    this.canvas.addEventListener('webglcontextrestored', this.handleContextRestored)
   }
 
   resize() {
@@ -103,9 +126,10 @@ export class MindLandscape {
 
     try {
       if (await navigator.xr.isSessionSupported('immersive-vr')) {
-        document.body.append(VRButton.createButton(this.renderer, {
+        this.vrButton = VRButton.createButton(this.renderer, {
           optionalFeatures: ['local-floor', 'bounded-floor']
-        }))
+        })
+        document.body.append(this.vrButton)
       }
     } catch {
       return
@@ -113,6 +137,7 @@ export class MindLandscape {
   }
 
   render(time) {
+    if (this.contextLost || this.disposed) return
     this.timer.update(time)
     const delta = Math.min(this.timer.getDelta(), MAX_FRAME_DELTA)
 
@@ -120,5 +145,23 @@ export class MindLandscape {
     if (!this.renderer.xr.isPresenting) this.controls.update(delta)
     this.landscape.update(this.timer.getElapsed(), delta)
     this.renderer.render(this.scene, this.camera)
+  }
+
+  dispose() {
+    if (this.disposed) return
+    this.disposed = true
+    this.renderer?.setAnimationLoop(null)
+    window.removeEventListener('resize', this.handleResize)
+    this.canvas.removeEventListener('webglcontextlost', this.handleContextLost)
+    this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored)
+    for (const unsubscribe of this.unsubscribers) unsubscribe()
+    this.unsubscribers.length = 0
+    this.interface?.dispose()
+    this.controls?.dispose()
+    this.landscape?.dispose()
+    this.world?.dispose()
+    this.vrButton?.remove()
+    this.renderer?.dispose()
+    this.timer.disconnect?.()
   }
 }

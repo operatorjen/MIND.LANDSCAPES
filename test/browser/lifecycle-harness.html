@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <title>Lifecycle harness</title>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "../../vendor/three/three.module.min.js",
+          "three/addons/webxr/VRButton.js": "../../vendor/three/VRButton.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <canvas id="landscape"></canvas>
+    <button id="config-button"></button>
+    <button id="fullscreen-button"></button>
+    <button id="choose-button"></button>
+    <button id="apply-button"></button>
+    <button id="export-button"></button>
+    <input id="content-input" type="file">
+    <select id="quality-select"><option value="low">Low</option></select>
+    <input id="day-cycle-speed" value="1">
+    <output id="day-cycle-speed-value"></output>
+    <input id="reduced-motion-toggle" type="checkbox">
+    <div id="quality-description"></div>
+    <div id="status"></div>
+    <div id="drop-overlay"></div>
+    <dialog id="config-dialog"></dialog>
+    <textarea id="config-editor"></textarea>
+    <div id="config-message"></div>
+    <div id="memory-list"></div>
+    <div id="memory-count"></div>
+    <div id="world-name"></div>
+    <pre id="result">pending</pre>
+    <script type="module" src="./lifecycle-harness.js"></script>
+  </body>
+</html>
