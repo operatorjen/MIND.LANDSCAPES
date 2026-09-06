@@ -1,4 +1,38 @@
 export const architectureGlsl = `
+  float architectureBoulderDistance(
+    vec3 local,
+    vec2 cell,
+    float width,
+    float depth,
+    float height,
+    float variant
+  ) {
+    float mainMass = ellipsoidDistance(
+      local - vec3(0.0, height * 0.42, 0.0),
+      vec3(width * 0.68, height * 0.68, depth * 0.61)
+    );
+    float shoulderSide = variant > 0.5 ? 1.0 : -1.0;
+    float shoulder = ellipsoidDistance(
+      local - vec3(shoulderSide * width * 0.27, height * 0.28, -depth * 0.08),
+      vec3(width * 0.43, height * 0.43, depth * 0.5)
+    );
+    float boulder = smoothMinimum(mainMass, shoulder, 2.2);
+    vec2 strataPoint = local.xz * 0.072 + cell * 0.31
+      + vec2(local.y * 0.024, -local.y * 0.019) + uSeed * 0.07;
+    float weathered = fbm(strataPoint) - 0.5;
+    float strata = sin(local.y * 0.31 + weathered * 4.8 + variant * 3.1);
+    return boulder + weathered * 1.05 + strata * 0.13;
+  }
+
+  float morphArchitectureDistance(float boulderDistance, float structureDistance, float detail) {
+    float amount = smoothstep(0.06, 0.94, detail);
+    float supported = smoothMinimum(boulderDistance, structureDistance, 1.1);
+    if (amount < 0.5) {
+      return mix(boulderDistance, supported, smoothstep(0.0, 0.5, amount));
+    }
+    return mix(supported, structureDistance, smoothstep(0.5, 1.0, amount));
+  }
+
   float brutalistSlabDistance(
     vec3 point,
     vec3 center,
@@ -21,8 +55,7 @@ export const architectureGlsl = `
 
     vec2 center = structureCenterForCell(cell);
     vec2 planar = point.xz - center;
-    if (max(abs(planar.x), abs(planar.y)) > 38.0) return 1000.0;
-    float structureDetail = proximityDetail(center, 18.0, 88.0);
+    if (max(abs(planar.x), abs(planar.y)) > 48.0) return 1000.0;
 
     float ground = terrainFoundation(center);
     if (ground < uWaterLevel + STRUCTURE_WATER_CLEARANCE) return 1000.0;
@@ -36,22 +69,18 @@ export const architectureGlsl = `
     float height = mix(16.0, 29.0, hash21(cell + 24.7)) * mix(0.88, 1.32, heightExpression);
     float wall = mix(1.05, 1.75, variant) * mix(0.92, 1.18, clamp(uMechanicalIntensity * 0.38, 0.0, 1.0));
     vec3 local = vec3(planar.x, point.y - ground + 0.5, planar.y);
-    local.xz = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * local.xz;
-    if (structureDetail < 0.035) {
-      float distantBase = boxDistance(
-        local - vec3(0.0, height * 0.5, 0.0),
-        vec3(width * 0.5, height * 0.5, depth * 0.5)
-      );
-      float distantSide = variant > 0.5 ? 1.0 : -1.0;
-      float distantCrown = brutalistSlabDistance(
-        local,
-        vec3(distantSide * width * 0.12, height * 0.91, -depth * 0.06),
-        vec3(width * 0.41, height * 0.18, depth * 0.32),
-        distantSide * mix(0.06, 0.17, variant),
-        vec2(distantSide * 0.075, 0.018)
-      );
-      return min(distantBase, distantCrown);
-    }
+    mat2 structureRotation = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963);
+    local.xz = structureRotation * local.xz;
+    vec2 cameraLocal = structureRotation * (cameraPosition.xz - center);
+    vec2 morphEnvelope = vec2(width * 0.72, depth * 0.64);
+    float distanceToEnvelope = length(max(abs(cameraLocal) - morphEnvelope, 0.0));
+    float structureDetail = 1.0 - smoothstep(
+      10.0 * uDetailScale,
+      72.0 * uDetailScale,
+      distanceToEnvelope
+    );
+    float boulderMass = architectureBoulderDistance(local, cell, width, depth, height, variant);
+    if (structureDetail < 0.002) return boulderMass;
     float styleRoll = fract(
       hash21(cell + 155.4)
       + uMechanicalIntensity * 0.21
@@ -60,14 +89,6 @@ export const architectureGlsl = `
       + uAbandonedInteriors * 0.13
     );
     float structureStyle = floor(styleRoll * 4.0);
-    float tunnelRoll = fract(
-      hash21(cell + 233.1)
-      + uSandyInteriors * 0.16
-      + uOrnateInteriors * 0.24
-      + uPsychedelicIntensity * 0.18
-    );
-    float tunnelFactor = mix(TUNNEL_FACTOR_MIN, TUNNEL_FACTOR_MAX, tunnelRoll);
-
     float classicScore = 0.52 + hash21(cell + 139.1) * 0.55;
     float sandyScore = 0.12 + uSandyInteriors * 0.98 + hash21(cell + 101.3) * 0.5;
     float ornateScore = 0.1 + uOrnateInteriors * 0.98 + hash21(cell + 114.7) * 0.5;
@@ -91,7 +112,7 @@ export const architectureGlsl = `
       + uPsychedelicIntensity * 0.23
     );
     float undergroundMaterial = undergroundRoll < 0.17 ? MATERIAL_CAVE
-      : undergroundRoll < 0.34 ? MATERIAL_FLOODED
+      : undergroundRoll < 0.34 ? MATERIAL_CONCRETE
       : undergroundRoll < 0.52 ? MATERIAL_LIMINAL
       : undergroundRoll < 0.69 ? MATERIAL_ORNATE
       : undergroundRoll < 0.84 ? MATERIAL_MARBLE
@@ -342,72 +363,37 @@ export const architectureGlsl = `
     float undergroundMass = 1000.0;
     float portalSurface = 0.0;
     if (structureDetail > 0.002) {
-      float chamberHalfX = width * 0.2;
-      float chamberStart = stairEnd + 0.2;
-      float chamberEnd = -depth * min(0.84, tunnelFactor + 0.25);
-      float portalMarkerZ = chamberEnd + 0.3;
-      float chamberCenter = (chamberStart + chamberEnd) * 0.5;
-      float chamberHalfDepth = (chamberStart - chamberEnd) * 0.5;
-      float corridorOffset = undergroundCenterOffset(local.z, chamberStart, chamberEnd, chamberHalfX, variant, structureStyle);
-      vec3 corridorLocal = vec3(local.x - stairX - corridorOffset, local.y, local.z);
-      float endOffset = undergroundCenterOffset(chamberEnd, chamberStart, chamberEnd, chamberHalfX, variant, structureStyle);
-      float ceilingUnderside = undergroundMaterial > MATERIAL_FLOODED_MAX ? -1.38 : -0.62;
-      if (undergroundMaterial > MATERIAL_ABANDONED_MAX && undergroundMaterial < MATERIAL_CAVE_MAX) ceilingUnderside = -0.34;
-      if (undergroundMaterial > MATERIAL_CAVE_MAX && undergroundMaterial < MATERIAL_FLOODED_MAX) ceilingUnderside = -0.82;
-      float chamberCenterY = (-5.1 + ceilingUnderside) * 0.5;
-      float chamberHalfHeight = (ceilingUnderside + 5.1) * 0.5;
-      float wallThickness = undergroundMaterial > MATERIAL_FLOODED_MAX ? 0.18 : 0.24;
-      if (undergroundMaterial > MATERIAL_ABANDONED_MAX && undergroundMaterial < MATERIAL_CAVE_MAX) wallThickness = 0.4;
-      float sideLeft = boxDistance(
-        corridorLocal - vec3(-chamberHalfX, chamberCenterY, chamberCenter),
-        vec3(wallThickness, chamberHalfHeight, chamberHalfDepth)
+      vec4 mazeNode;
+      vec2 mazeLocal;
+      float corridor = mazePlanDistance(local.xz, cell, width, depth, variant, mazeNode, mazeLocal);
+      float firstRow = stairEnd - 1.2;
+      float lastRow = -depth * 0.78;
+      float ceilingUnderside = -0.8 - fract(hash21(cell + 76.2) + uCeilingVariation * 0.41) * 0.55;
+      float cavity = max(corridor, max(-5.1 - local.y, local.y - ceilingUnderside));
+      float envelope = boxDistance(
+        local - vec3(0.0, -2.3, (firstRow + lastRow) * 0.5),
+        vec3(width * 0.5, 2.8, (firstRow - lastRow) * 0.5 + 2.1)
       );
-      float sideRight = boxDistance(
-        corridorLocal - vec3(chamberHalfX, chamberCenterY, chamberCenter),
-        vec3(wallThickness, chamberHalfHeight, chamberHalfDepth)
-      );
-      float backWall = boxDistance(
-        local - vec3(stairX + endOffset, chamberCenterY, chamberEnd),
-        vec3(chamberHalfX, chamberHalfHeight, 0.26)
-      );
-      float rhythm = mix(2.5, 5.4, fract(hash21(cell + 247.6) + styleRoll));
-      if (undergroundMaterial > MATERIAL_FLOODED_MAX) rhythm = 2.75;
-      if (undergroundMaterial > MATERIAL_ABANDONED_MAX && undergroundMaterial < MATERIAL_CAVE_MAX) rhythm = 5.8;
-      if (undergroundMaterial > MATERIAL_SAND_MAX && undergroundMaterial < MATERIAL_ORNATE_MAX) rhythm = 3.05;
-      float repeatingZ = mod(local.z - chamberEnd, rhythm) - rhythm * 0.5;
-      float wallRibs = boxDistance(
-        vec3(abs(corridorLocal.x) - chamberHalfX + 0.34, local.y - chamberCenterY, repeatingZ),
-        vec3(0.34, chamberHalfHeight, undergroundMaterial > MATERIAL_FLOODED_MAX ? 0.12 : 0.22)
-      );
-      float ceilingBeams = boxDistance(
-        vec3(corridorLocal.x, local.y - ceilingUnderside - 0.18, repeatingZ),
-        vec3(chamberHalfX, undergroundMaterial > MATERIAL_FLOODED_MAX ? 0.12 : 0.2, undergroundMaterial > MATERIAL_CAVE_MAX && undergroundMaterial < MATERIAL_FLOODED_MAX ? 0.14 : 0.28)
-      );
-      if (undergroundMaterial > MATERIAL_ABANDONED_MAX && undergroundMaterial < MATERIAL_CAVE_MAX) {
-        wallRibs = 1000.0;
-        ceilingBeams = 1000.0;
+      float shell = max(envelope, -cavity);
+      shell = max(shell, -stairVoid);
+      float marker = 1000.0;
+      if (mazeNode.b > 0.0 && mazeNode.a > 0.0) {
+        vec3 portalPoint = vec3(mazeLocal.x, local.y + 3.78, mazeLocal.y);
+        float portalTime = uTime * uMotionScale;
+        float breathPhase = portalTime * 1.22 + mazeNode.b * 2.0;
+        float breath = sin(breathPhase) * 0.72 + sin(breathPhase * 2.0 - 1.1) * 0.2;
+        float spasm = sin(portalTime * 4.2 + mazeNode.b * 4.3) * sin(breathPhase) * 0.014;
+        vec3 breathingPoint = portalPoint;
+        breathingPoint.xz /= 1.0 + breath * 0.2;
+        breathingPoint.y /= 1.0 + breath * 0.24;
+        vec3 spinningPoint = portalPoint;
+        spinningPoint.xz = rotate2(portalTime * 0.22) * spinningPoint.xz;
+        float membrane = sin(spinningPoint.y * 7.0 - spinningPoint.x * 3.2);
+        membrane *= sin((spinningPoint.x - spinningPoint.z) * 8.5 + portalTime * 0.35);
+        marker = length(breathingPoint) - (0.625 + breath * 0.065 + membrane * 0.016 + spasm);
       }
-      float ceilingHalfHeight = (0.5 - ceilingUnderside) * 0.5;
-      float ceilingCenterY = (0.5 + ceilingUnderside) * 0.5;
-      float chamberCeiling = boxDistance(
-        corridorLocal - vec3(0.0, ceilingCenterY, chamberCenter),
-        vec3(chamberHalfX, ceilingHalfHeight, chamberHalfDepth)
-      );
-      float chamberFloor = boxDistance(
-        corridorLocal - vec3(0.0, -5.19, chamberCenter),
-        vec3(chamberHalfX, 0.12, chamberHalfDepth)
-      );
-      vec3 portalPoint = vec3(corridorLocal.x, local.y + 2.86, local.z - portalMarkerZ);
-      float portalOuter = boxDistance(portalPoint, vec3(min(1.62, chamberHalfX * 0.46), 1.72, 0.16));
-      float portalInner = boxDistance(portalPoint, vec3(min(1.18, chamberHalfX * 0.34), 1.28, 0.34));
-      float portalMarker = max(portalOuter, -portalInner);
-      float undergroundShell = min(min(sideLeft, sideRight), min(backWall, min(wallRibs, min(ceilingBeams, min(chamberCeiling, chamberFloor)))));
-      portalSurface = step(portalMarker, undergroundShell);
-      undergroundMass = min(undergroundShell, portalMarker);
-      if (undergroundMaterial > MATERIAL_ABANDONED_MAX && undergroundMaterial < MATERIAL_CAVE_MAX) {
-        float caveRelief = fbm(point.xz * 0.34 + point.y * vec2(0.07, -0.09) + uSeed * 0.31) - 0.5;
-        undergroundMass += caveRelief * 0.16 * structureDetail;
-      }
+      portalSurface = step(marker, shell);
+      undergroundMass = min(shell, marker);
     }
 
     float baseMass = min(cathedral, exteriorMass);
@@ -422,6 +408,6 @@ export const architectureGlsl = `
     } else if (cathedralSurface * innerSurface > 0.5 || ceilingSurface > 0.5) {
       material = interiorMaterial;
     }
-    return structure;
+    return morphArchitectureDistance(boulderMass, structure, structureDetail);
   }
 `

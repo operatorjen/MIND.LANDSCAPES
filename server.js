@@ -234,12 +234,19 @@ function serveStatic(pathname, request, response) {
   try {
     if (statSync(filename).isDirectory()) filename = resolve(filename, 'index.html')
     const stat = statSync(filename)
-    response.writeHead(200, {
+    const etag = `W/"${stat.size.toString(16)}-${stat.mtimeMs.toString(16)}"`
+    const headers = {
       'Content-Type': mimeType(filename),
-      'Content-Length': stat.size,
       'Cache-Control': 'no-cache',
+      ETag: etag,
       'X-Content-Type-Options': 'nosniff'
-    })
+    }
+    if (request.headers['if-none-match']?.split(',').some(value => value.trim() === etag || value.trim() === '*')) {
+      response.writeHead(304, headers)
+      response.end()
+      return
+    }
+    response.writeHead(200, { ...headers, 'Content-Length': stat.size })
     if (request.method === 'HEAD') response.end()
     else createReadStream(filename).pipe(response)
   } catch {

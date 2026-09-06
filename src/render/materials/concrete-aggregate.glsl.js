@@ -1,13 +1,14 @@
 export const concreteAggregateDefaults = Object.freeze({
-  aggregateScale: 9.5,
-  aggregateCoverage: 0.68,
-  aggregateWidthMin: 0.055,
-  aggregateWidthMax: 0.12,
-  aggregateLengthMin: 0.16,
-  aggregateLengthMax: 0.34,
-  curvature: 0.16,
-  poreScale: 2.7,
-  reliefStrength: 0.19,
+  textureScale: 0.42,
+  aggregateScale: 24,
+  aggregateCoverage: 0.3,
+  aggregateWidthMin: 0.03,
+  aggregateWidthMax: 0.065,
+  aggregateLengthMin: 0.07,
+  aggregateLengthMax: 0.15,
+  curvature: 0.1,
+  poreScale: 4.8,
+  reliefStrength: 0.12,
   morphStart: 0.05,
   morphEnd: 0.78
 })
@@ -15,6 +16,7 @@ export const concreteAggregateDefaults = Object.freeze({
 const glslFloat = (value) => Number(value).toFixed(4)
 
 export const concreteAggregateGlsl = `
+  const float CONCRETE_TEXTURE_SCALE = ${glslFloat(concreteAggregateDefaults.textureScale)};
   const float CONCRETE_AGGREGATE_SCALE = ${glslFloat(concreteAggregateDefaults.aggregateScale)};
   const float CONCRETE_AGGREGATE_COVERAGE = ${glslFloat(concreteAggregateDefaults.aggregateCoverage)};
   const float CONCRETE_WIDTH_MIN = ${glslFloat(concreteAggregateDefaults.aggregateWidthMin)};
@@ -59,6 +61,10 @@ export const concreteAggregateGlsl = `
     if (detailMorph < 0.002) return result;
 
     vec2 coordinate = concreteCoordinates(position, surfaceNormal) * CONCRETE_AGGREGATE_SCALE;
+    vec2 textureCoordinate = concreteCoordinates(position, surfaceNormal) * CONCRETE_TEXTURE_SCALE;
+    float textureHeight = texture2D(uConcreteHeightMap, textureCoordinate).r;
+    float fineHeight = texture2D(uConcreteHeightMap, textureCoordinate * 2.17 + vec2(0.37, 0.61)).r;
+    textureHeight = mix(textureHeight, fineHeight, 0.24);
     vec2 cell = floor(coordinate);
     vec2 local = fract(coordinate) - 0.5;
     float identity = hash21(cell + uSeed * 0.19);
@@ -83,9 +89,14 @@ export const concreteAggregateGlsl = `
     float weathering = noise21(concreteCoordinates(position, surfaceNormal) * 0.44 + uSeed * 0.11);
     result.aggregate = aggregate * detailMorph;
     result.pores = pores * detailMorph;
-    result.matrix = mix(0.5, matrix, detailMorph);
+    result.matrix = mix(0.5, mix(matrix, textureHeight, 0.68), detailMorph);
     result.weathering = mix(0.5, weathering, detailMorph);
-    result.height = (aggregate * 0.58 - pores * 0.5 + (matrix - 0.5) * 0.12) * detailMorph;
+    result.height = (
+      (textureHeight - 0.5) * 1.05
+      + aggregate * 0.18
+      - pores * 0.42
+      + (matrix - 0.5) * 0.06
+    ) * detailMorph;
     return result;
   }
 

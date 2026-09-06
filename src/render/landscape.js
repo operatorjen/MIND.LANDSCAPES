@@ -5,6 +5,8 @@ import {
   UNIFORM_RESPONSE
 } from '../config/rendering.js'
 import { fragmentShaders, vertexShader } from './shaders.js'
+import { ArtAtlas } from './art-atlas.js'
+import { MazeAtlas } from './maze-atlas.js'
 import {
   createUniformState,
   createUniformTargets,
@@ -23,11 +25,33 @@ export class Landscape {
     const state = createUniformState(settings, seed, quality)
     this.targets = state.targets
     this.uniforms = state.uniforms
+    this.mazeAtlas = new MazeAtlas(this.uniforms)
+    this.artAtlas = new ArtAtlas(this.uniforms)
+    this.concreteHeightMap = new THREE.TextureLoader().load('/assets/textures/concrete-height.png')
+    this.concreteHeightMap.wrapS = THREE.RepeatWrapping
+    this.concreteHeightMap.wrapT = THREE.RepeatWrapping
+    this.concreteHeightMap.minFilter = THREE.LinearMipmapLinearFilter
+    this.concreteHeightMap.magFilter = THREE.LinearFilter
+    this.concreteHeightMap.colorSpace = THREE.NoColorSpace
+    this.uniforms.uConcreteHeightMap.value = this.concreteHeightMap
+    this.sunlitOvergrowthMap = new THREE.TextureLoader().load('/assets/textures/sunlit-overgrowth-mask.png')
+    this.sunlitOvergrowthMap.wrapS = THREE.RepeatWrapping
+    this.sunlitOvergrowthMap.wrapT = THREE.RepeatWrapping
+    this.sunlitOvergrowthMap.minFilter = THREE.LinearMipmapLinearFilter
+    this.sunlitOvergrowthMap.magFilter = THREE.LinearFilter
+    this.sunlitOvergrowthMap.colorSpace = THREE.NoColorSpace
+    this.uniforms.uSunlitOvergrowthMap.value = this.sunlitOvergrowthMap
     this.materials = new Map()
     this.geometry = new THREE.BoxGeometry(SKY_VOLUME_SIZE, SKY_VOLUME_SIZE, SKY_VOLUME_SIZE)
     this.mesh = new THREE.Mesh(this.geometry, this.materialForQuality(quality.level))
     this.mesh.frustumCulled = false
     this.mesh.renderOrder = -100
+    this.mesh.onBeforeRender = (renderer, scene, camera, geometry, material) => {
+      this.uniforms.uCameraWorld.value.copy(camera.matrixWorld)
+      this.uniforms.uProjectionInverse.value.copy(camera.projectionMatrixInverse)
+      renderer.getCurrentViewport(this.uniforms.uViewport.value)
+      material.uniformsNeedUpdate = true
+    }
     scene.add(this.mesh)
   }
 
@@ -75,6 +99,7 @@ export class Landscape {
   }
 
   update(time, delta) {
+    this.mazeAtlas.update(this.camera.position, this.settings, this.seed)
     this.mesh.position.copy(this.camera.position)
     this.uniforms.uTime.value = time
     const amount = 1 - Math.exp(-delta * UNIFORM_RESPONSE)
@@ -93,11 +118,19 @@ export class Landscape {
   dispose() {
     this.mesh.removeFromParent()
     this.geometry.dispose()
+    this.mazeAtlas.dispose()
+    this.artAtlas.dispose()
+    this.concreteHeightMap.dispose()
+    this.sunlitOvergrowthMap.dispose()
     for (const material of this.materials.values()) material.dispose()
     this.materials.clear()
   }
 
   restoreContext() {
+    this.mazeAtlas.texture.needsUpdate = true
+    this.artAtlas.texture.needsUpdate = true
+    this.concreteHeightMap.needsUpdate = true
+    this.sunlitOvergrowthMap.needsUpdate = true
     for (const material of this.materials.values()) material.needsUpdate = true
   }
 }

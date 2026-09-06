@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
@@ -25,31 +25,70 @@ try {
   await waitForServer()
   const chrome = await findChrome()
   chromeSession = await launchChrome(chrome)
-  const compiled = []
-  const errors = []
-  const levels = process.env.BROWSER_TEST_LEVEL ? [process.env.BROWSER_TEST_LEVEL] : ['low', 'medium', 'high']
-  for (const level of levels) {
-    const result = await runHarness(`?level=${level}`)
-    compiled.push(...(result.compiled || []))
-    errors.push(...(result.errors || []))
+  if (process.argv.includes('--water-only')) {
+    const result = await runHarness('', '/test/browser/water-harness.html')
+    const screenshot = await chromeSession.send('Page.captureScreenshot', { format: 'png' }, 60000)
+    writeFileSync('/tmp/landscape-water-preview.png', Buffer.from(screenshot.result.data, 'base64'))
+    console.log(JSON.stringify(result, null, 2))
+    if (!result.passed) process.exitCode = 1
+  } else if (process.argv.includes('--optimization-baseline')) {
+    const result = await runHarness('?without-art', '/test/browser/optimization-harness.html')
+    console.log(JSON.stringify(result, null, 2))
+    if (!result.passed) process.exitCode = 1
+  } else if (process.argv.includes('--art-only')) {
+    const art = await runHarness('', '/test/browser/art-harness.html')
+    const screenshot = await chromeSession.send('Page.captureScreenshot', { format: 'png' }, 60000)
+    writeFileSync('/tmp/landscape-art-preview.png', Buffer.from(screenshot.result.data, 'base64'))
+    console.log(JSON.stringify(art, null, 2))
+    if (!art.passed) process.exitCode = 1
+  } else if (process.argv.includes('--maze-only')) {
+    const maze = await runHarness('?preview', '/test/browser/maze-harness.html')
+    const screenshot = await chromeSession.send('Page.captureScreenshot', { format: 'png' }, 60000)
+    writeFileSync('/tmp/landscape-maze-preview.png', Buffer.from(screenshot.result.data, 'base64'))
+    console.log(JSON.stringify({ ...maze, preview: '/tmp/landscape-maze-preview.png' }, null, 2))
+    if (!maze.passed) process.exitCode = 1
+  } else {
+    const optimizationOnly = process.argv.includes('--optimization-only')
+    const compiled = []
+    const errors = []
+    const levels = optimizationOnly ? [] : process.env.BROWSER_TEST_LEVEL ? [process.env.BROWSER_TEST_LEVEL] : ['low', 'medium', 'high']
+    for (const level of levels) {
+      const result = await runHarness(`?level=${level}`)
+      compiled.push(...(result.compiled || []))
+      errors.push(...(result.errors || []))
+    }
+    const update = process.env.UPDATE_VISUAL_BASELINES === '1' ? '&update=1' : ''
+    const visual = optimizationOnly || process.env.SKIP_VISUAL_REGRESSION === '1'
+      ? { passed: true, errors: [], signatures: {}, comparisons: {} }
+      : await runHarness(`?level=low&visual=1${update}`)
+    errors.push(...(visual.errors || []))
+    const lifecycle = optimizationOnly ? { passed: true, skipped: true } : await runHarness('', '/test/browser/lifecycle-harness.html')
+    errors.push(...(lifecycle.errors || []))
+    const maze = await runHarness('', '/test/browser/maze-harness.html')
+    errors.push(...(maze.errors || []))
+    const art = await runHarness('', '/test/browser/art-harness.html')
+    errors.push(...(art.errors || []))
+    const water = await runHarness('', '/test/browser/water-harness.html')
+    errors.push(...(water.errors || []))
+    const waterPreview = await chromeSession.send('Page.captureScreenshot', { format: 'png' }, 60000)
+    writeFileSync('/tmp/landscape-water-preview.png', Buffer.from(waterPreview.result.data, 'base64'))
+    const optimization = await runHarness('', '/test/browser/optimization-harness.html')
+    errors.push(...(optimization.errors || []))
+    const result = {
+      passed: errors.length === 0 && compiled.every(({ programs }) => programs > 0) && visual.passed && lifecycle.passed && optimization.passed && maze.passed && art.passed && water.passed,
+      compiled,
+      art,
+      water,
+      lifecycle,
+      optimization,
+      maze,
+      errors,
+      signatures: visual.signatures,
+      comparisons: visual.comparisons
+    }
+    console.log(JSON.stringify(result, null, 2))
+    if (!result.passed) process.exitCode = 1
   }
-  const update = process.env.UPDATE_VISUAL_BASELINES === '1' ? '&update=1' : ''
-  const visual = process.env.SKIP_VISUAL_REGRESSION === '1'
-    ? { passed: true, errors: [], signatures: {}, comparisons: {} }
-    : await runHarness(`?level=low&visual=1${update}`)
-  errors.push(...(visual.errors || []))
-  const lifecycle = await runHarness('', '/test/browser/lifecycle-harness.html')
-  errors.push(...(lifecycle.errors || []))
-  const result = {
-    passed: errors.length === 0 && compiled.every(({ programs }) => programs > 0) && visual.passed && lifecycle.passed,
-    compiled,
-    lifecycle,
-    errors,
-    signatures: visual.signatures,
-    comparisons: visual.comparisons
-  }
-  console.log(JSON.stringify(result, null, 2))
-  if (!result.passed) process.exitCode = 1
 } finally {
   await chromeSession?.close()
   server?.kill('SIGTERM')

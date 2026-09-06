@@ -6,6 +6,7 @@ import { ExplorerControls } from './input/explorer-controls.js'
 import { Landscape } from './render/landscape.js'
 import { QualityController } from './render/quality.js'
 import { WorldState } from './world/world-state.js'
+import { PersonalArt } from './ui/personal-art.js'
 import { Interface } from './ui/interface.js'
 
 const CAMERA_FOV = 75
@@ -33,6 +34,7 @@ export class MindLandscape {
       if (this.disposed) return
       this.contextLost = false
       this.landscape.restoreContext()
+      this.viewport = null
       this.resize()
       this.renderer.setAnimationLoop(this.renderFrame)
       this.interface?.setStatus('The landscape has been restored.')
@@ -41,7 +43,7 @@ export class MindLandscape {
 
   async start() {
     this.world = await WorldState.create()
-    if (this.disposed) return
+    if (this.disposed) { this.world.dispose(); return }
     this.quality = new QualityController()
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, CAMERA_NEAR, CAMERA_FAR)
@@ -68,6 +70,9 @@ export class MindLandscape {
       () => this.world.document.seed
     )
     this.interface = new Interface(this.world, this.quality)
+    this.personalArt = new PersonalArt(this.landscape.artAtlas, this.interface)
+    await this.personalArt.load()
+    if (this.disposed) return
 
     this.unsubscribers.push(this.world.subscribe((document) => {
       this.landscape.applySettings(this.world.effectiveSettings, document.seed)
@@ -90,7 +95,8 @@ export class MindLandscape {
 
       this.interface.setStatus('Interpreting its mood and material language…')
       const interpretation = await enhanceEntriesWithAI(entries)
-      for (const entry of interpretation.entries) await this.world.addOrReplace(entry)
+      if (this.disposed) return
+      await this.world.addOrReplaceMany(interpretation.entries)
       const verb = entries.length === 1 ? 'has' : 'have'
       const subject = entries.length === 1 ? entries[0].source.name : `${entries.length} memories`
       const reading = interpretation.usedAI ? 'GPT interpreted the mood; ' : 'Local analysis shaped it; '
@@ -114,6 +120,8 @@ export class MindLandscape {
     const width = window.innerWidth
     const height = window.innerHeight
     const pixelRatio = Math.min(window.devicePixelRatio || 1, this.quality.profile.pixelRatio)
+    if (this.viewport?.width === width && this.viewport.height === height && this.viewport.pixelRatio === pixelRatio) return
+    this.viewport = { width, height, pixelRatio }
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     this.renderer.setPixelRatio(pixelRatio)
@@ -125,7 +133,7 @@ export class MindLandscape {
     if (!navigator.xr || !window.isSecureContext) return
 
     try {
-      if (await navigator.xr.isSessionSupported('immersive-vr')) {
+      if (await navigator.xr.isSessionSupported('immersive-vr') && !this.disposed) {
         this.vrButton = VRButton.createButton(this.renderer, {
           optionalFeatures: ['local-floor', 'bounded-floor']
         })
@@ -143,6 +151,7 @@ export class MindLandscape {
 
     this.quality.sample(delta, this.renderer.xr.isPresenting)
     if (!this.renderer.xr.isPresenting) this.controls.update(delta)
+    this.landscape.uniforms.uPortalGlow.value = this.controls.portalGlow
     this.landscape.update(this.timer.getElapsed(), delta)
     this.renderer.render(this.scene, this.camera)
   }
@@ -156,6 +165,7 @@ export class MindLandscape {
     this.canvas.removeEventListener('webglcontextrestored', this.handleContextRestored)
     for (const unsubscribe of this.unsubscribers) unsubscribe()
     this.unsubscribers.length = 0
+    this.personalArt?.dispose()
     this.interface?.dispose()
     this.controls?.dispose()
     this.landscape?.dispose()

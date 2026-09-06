@@ -93,10 +93,30 @@ test('document normalization repairs schema fields and preserves overrides', () 
     overrides: { atmosphere: { dayCycleSpeed: 3 } }
   })
 
-  assert.equal(normalized.schemaVersion, 2)
-  assert.equal(normalized.generatorVersion, '0.9.0')
+  assert.equal(normalized.schemaVersion, 3)
+  assert.equal(normalized.generatorVersion, '0.10.0')
   assert.equal(normalized.seed, 1)
   assert.deepEqual(normalized.entries, [])
   assert.deepEqual(normalized.overrides, { atmosphere: { dayCycleSpeed: 3 } })
   assert.deepEqual(normalized.generated, deriveSettings([]))
+})
+
+test('batch imports preserve sequential world results with one save and notification', async () => {
+  const { WorldState } = await import('../src/world/world-state.js')
+  let saves = 0, notifications = 0
+  const repository = { save: async () => { saves++ }, dispose() {} }
+  const document = normalizeDocument({ seed: 0.314159, entries: [] })
+  const batched = new WorldState(repository, document)
+  const sequential = new WorldState({ save: async () => {}, dispose() {} }, document)
+  batched.subscribe(() => { notifications++ })
+  const entry = (key, id) => ({ id, createdAt: '2026-01-01', source: { key, hash: key }, contribution: deriveSettings([]) })
+  const entries = [entry('a', 'first-a'), entry('b', 'b'), entry('a', 'second-a')]
+  await batched.addOrReplaceMany(entries)
+  for (const value of entries) await sequential.addOrReplace(value)
+  assert.equal(saves, 1)
+  assert.equal(notifications, 2)
+  assert.deepEqual(batched.document.generated, sequential.document.generated)
+  assert.deepEqual(batched.document.maze, sequential.document.maze)
+  assert.deepEqual(batched.document.entries.map(({ updatedAt, ...entry }) => entry), sequential.document.entries.map(({ updatedAt, ...entry }) => entry))
+  assert.equal(batched.document.entries[0].id, 'first-a')
 })

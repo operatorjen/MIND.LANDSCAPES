@@ -1,10 +1,9 @@
 import * as THREE from 'three'
-import { isPositionBlocked, isUndergroundAt, portalDestinationAt, terrainHeightAt } from '../world/spatial-layout.js'
+import { PLAYER_RADIUS } from '../config/navigation.js'
+import { SpatialQueries } from '../world/spatial-queries.js'
 
 const EYE_HEIGHT = 1.82
 const WATER_EYE_CLEARANCE = 1.58
-const PLAYER_RADIUS = 0.46
-const COLLISION_LOOKAHEAD = 0.3
 const ESCAPE_STEP = 0.14
 const ESCAPE_RINGS = 22
 const ESCAPE_DIRECTIONS = 16
@@ -22,7 +21,6 @@ const SLIDE_DAMPING = 0.18
 const BLOCKED_DAMPING = 0.35
 const RECOVERY_DAMPING = 0.12
 const PORTAL_COOLDOWN = 1.4
-const DIRECTION_EPSILON = 0.0001
 
 export class ExplorerControls {
   constructor(canvas, camera, getSettings, getSeed) {
@@ -38,8 +36,12 @@ export class ExplorerControls {
     this.moveDirection = new THREE.Vector3()
     this.collisionProbe = new THREE.Vector3()
     this.portalCooldown = 0
+    this.portalTransition = null
+    this.portalGlow = 0
     const settings = this.getSettings()
     const seed = this.getSeed()
+    this.spatial = new SpatialQueries()
+    this.spatial.update(settings, seed)
     this.camera.position.set(0, this.eyeHeightAt(0, INITIAL_DISTANCE, settings, seed), INITIAL_DISTANCE)
     this.bind()
     this.applyRotation()
@@ -85,6 +87,22 @@ export class ExplorerControls {
   }
 
   update(delta) {
+    if (this.portalTransition) {
+      const transition = this.portalTransition
+      transition.elapsed += delta
+      const elapsed = transition.elapsed
+      this.portalGlow = elapsed < 0.65 ? Math.min(1, elapsed / 0.55)
+        : Math.max(0, 1 - (elapsed - 0.65) / 0.7)
+      if (elapsed >= 0.65 && !transition.arrived) {
+        this.arriveAtPortal(transition.destination)
+        transition.arrived = true
+      }
+      if (elapsed >= 1.35) {
+        this.portalTransition = null
+        this.portalGlow = 0
+      }
+      return
+    }
     this.portalCooldown = Math.max(0, this.portalCooldown - delta)
     const forwardInput = Number(this.keys.has('KeyW') || this.keys.has('ArrowUp'))
       - Number(this.keys.has('KeyS') || this.keys.has('ArrowDown'))
@@ -104,32 +122,68 @@ export class ExplorerControls {
 
     const settings = this.getSettings()
     const seed = this.getSeed()
+    this.spatial.update(settings, seed)
     this.escapeCollision(settings, seed)
     const movementX = this.velocity.x * delta
     const movementZ = this.velocity.z * delta
     const movementLength = Math.hypot(movementX, movementZ)
-    const steps = Math.max(1, Math.ceil(movementLength / MOVEMENT_SUBSTEP))
-    const stepX = movementX / steps
-    const stepZ = movementZ / steps
+    const steps = Math.ceil(movementLength / MOVEMENT_SUBSTEP)
+    const stepX = steps ? movementX / steps : 0
+    const stepZ = steps ? movementZ / steps : 0
 
     for (let step = 0; step < steps; step++) {
       const startX = this.camera.position.x
       const startZ = this.camera.position.z
-      const stepLength = Math.max(Math.hypot(stepX, stepZ), DIRECTION_EPSILON)
-      const lookX = stepX / stepLength * COLLISION_LOOKAHEAD
-      const lookZ = stepZ / stepLength * COLLISION_LOOKAHEAD
       const nextX = startX + stepX
       const nextZ = startZ + stepZ
 
-      if (!this.isBlockedAt(nextX + lookX, nextZ + lookZ, settings, seed)) {
+      if (!this.isBlockedAt(nextX, nextZ, settings, seed)) {
         this.camera.position.setX(nextX)
         this.camera.position.setZ(nextZ)
         this.raiseToSurface(settings, seed)
         continue
       }
 
+      this.collisionProbe.set(startX, this.camera.position.y, startZ)
+      const normal = this.spatial.wallNormalAt(this.collisionProbe)
+      if (normal) {
+        const intoWall = Math.max(0, stepX * normal.x + stepZ * normal.z)
+        const tangentX = stepX - normal.x * intoWall
+        const tangentZ = stepZ - normal.z * intoWall
+        if (Math.hypot(tangentX, tangentZ) > 0.00001
+          && !this.isBlockedAt(startX + tangentX, startZ + tangentZ, settings, seed)) {
+          this.camera.position.setX(startX + tangentX)
+          this.camera.position.setZ(startZ + tangentZ)
+          this.raiseToSurface(settings, seed)
+          const blockedSpeed = Math.max(0, this.velocity.x * normal.x + this.velocity.z * normal.z)
+          this.velocity.x -= normal.x * blockedSpeed
+          this.velocity.z -= normal.z * blockedSpeed
+          continue
+        }
+
+        let moved = false
+        for (const axis of [{ x: normal.cosine, z: normal.sine }, { x: -normal.sine, z: normal.cosine }]) {
+          const amount = stepX * axis.x + stepZ * axis.z
+          if (Math.abs(amount) < 0.00001) continue
+          const x = this.camera.position.x + axis.x * amount
+          const z = this.camera.position.z + axis.z * amount
+          if (!this.isBlockedAt(x, z, settings, seed)) {
+            this.camera.position.setX(x)
+            this.camera.position.setZ(z)
+            this.raiseToSurface(settings, seed)
+            moved = true
+          } else {
+            const blockedSpeed = this.velocity.x * axis.x + this.velocity.z * axis.z
+            this.velocity.x -= axis.x * blockedSpeed * (1 - SLIDE_DAMPING)
+            this.velocity.z -= axis.z * blockedSpeed * (1 - SLIDE_DAMPING)
+          }
+        }
+        if (!moved) this.velocity.multiplyScalar(BLOCKED_DAMPING)
+        continue
+      }
+
       let moved = false
-      if (!this.isBlockedAt(nextX + lookX, startZ, settings, seed)) {
+      if (!this.isBlockedAt(nextX, startZ, settings, seed)) {
         this.camera.position.setX(nextX)
         this.raiseToSurface(settings, seed)
         moved = true
@@ -138,7 +192,7 @@ export class ExplorerControls {
       }
 
       const slideX = this.camera.position.x
-      if (!this.isBlockedAt(slideX, nextZ + lookZ, settings, seed)) {
+      if (!this.isBlockedAt(slideX, nextZ, settings, seed)) {
         this.camera.position.setZ(nextZ)
         this.raiseToSurface(settings, seed)
         moved = true
@@ -157,9 +211,14 @@ export class ExplorerControls {
 
   followPortal(settings, seed) {
     if (this.portalCooldown > 0) return
-    const destination = portalDestinationAt(this.camera.position, settings, seed)
+    const destination = this.spatial.portalDestinationAt(this.camera.position)
     if (!destination) return
 
+    this.portalTransition = { destination, elapsed: 0, arrived: false }
+    this.velocity.set(0, 0, 0)
+  }
+
+  arriveAtPortal(destination) {
     const cosine = Math.cos(destination.rotation)
     const sine = Math.sin(destination.rotation)
     const velocityX = this.velocity.x
@@ -168,8 +227,13 @@ export class ExplorerControls {
     this.velocity.z = sine * velocityX + cosine * velocityZ
     this.camera.position.setX(destination.x)
     this.camera.position.setZ(destination.z)
-    this.camera.position.y = this.eyeHeightAt(destination.x, destination.z, settings, seed)
-    this.yaw -= destination.rotation
+    this.camera.position.y = this.spatial.terrainHeightAt(destination.x, destination.z) + EYE_HEIGHT
+    if (Number.isFinite(destination.yaw)) {
+      this.yaw = destination.yaw
+      this.velocity.set(0, 0, 0)
+    } else {
+      this.yaw -= destination.rotation
+    }
     this.applyRotation()
     this.portalCooldown = PORTAL_COOLDOWN
   }
@@ -180,15 +244,15 @@ export class ExplorerControls {
   }
 
   eyeHeightAt(x, z, settings, seed) {
-    const groundHeight = terrainHeightAt(x, z, settings, seed)
-    if (isUndergroundAt(x, z, settings, seed)) return groundHeight + EYE_HEIGHT
+    const groundHeight = this.spatial.walkingSurfaceAt(x, z, this.camera.position.y)
+    if (this.spatial.isUndergroundAt(x, z)) return groundHeight + EYE_HEIGHT
     return Math.max(groundHeight + EYE_HEIGHT, settings.water.level + WATER_EYE_CLEARANCE)
   }
 
   isBlockedAt(x, z, settings, seed) {
     const probeHeight = this.eyeHeightAt(x, z, settings, seed)
-    this.collisionProbe.set(x, probeHeight, z)
-    return isPositionBlocked(this.collisionProbe, settings, seed, PLAYER_RADIUS)
+    this.collisionProbe.set(x, Math.min(probeHeight, this.camera.position.y), z)
+    return this.spatial.isPositionBlocked(this.collisionProbe, PLAYER_RADIUS)
   }
 
   escapeCollision(settings, seed) {
@@ -225,5 +289,6 @@ export class ExplorerControls {
     window.removeEventListener('keyup', this.handleKeyUp)
     window.removeEventListener('blur', this.handleBlur)
     this.keys.clear()
+    this.spatial.maps.clear()
   }
 }

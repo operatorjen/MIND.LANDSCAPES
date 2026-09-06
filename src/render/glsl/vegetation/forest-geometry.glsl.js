@@ -54,110 +54,24 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
     float trunkCurveSign = hash21(cell + 32.6) > 0.5 ? 1.0 : -1.0;
     float trunkCurve = mix(0.16, 0.5, hash21(cell + 28.9)) * age * trunkCurveSign;
 
+    float bodyGrowth = smoothstep(0.0, 0.72, plantDetail);
+    float foliageGrowth = smoothstep(0.18, 0.78, plantDetail);
+    vec3 growthScale = mix(vec3(0.32, 0.055, 0.32), vec3(1.0), bodyGrowth);
+    float distanceScale = min(growthScale.x, growthScale.y);
+    local /= growthScale.xz;
+    point.y = ground + (point.y - ground) / growthScale.y;
+    terrainSurface = ground + (terrainSurface - ground) / growthScale.y;
     vec3 coarsePlant = vec3(local.x, point.y - ground, local.y);
-    float coarseDistance = 1000.0;
-    float coarseMaterial = MATERIAL_BARK;
+    float coarseDistance;
+    float coarseMaterial = isSucculent ? MATERIAL_SUCCULENT : MATERIAL_BARK;
     if (isSucculent) {
-      float subtype = hash21(cell + 93.1);
-      coarseMaterial = MATERIAL_SUCCULENT;
-      if (subtype < 0.56) {
-        float coarseHeight = mix(2.1, 6.4, hash21(cell + 96.4));
-        coarseDistance = taperedSegmentDistance(coarsePlant, vec3(0.0), vec3(0.0, coarseHeight, 0.0), 0.34, 0.2);
-      } else if (subtype < 0.78) {
-        float barrelRadius = mix(0.42, 0.82, age);
-        coarseDistance = ellipsoidDistance(
-          coarsePlant - vec3(0.0, barrelRadius * 0.82, 0.0),
-          vec3(barrelRadius, barrelRadius * 1.18, barrelRadius)
-        );
-      } else {
-        float agaveReach = mix(0.75, 1.45, age);
-        coarseDistance = ellipsoidDistance(
-          coarsePlant - vec3(0.0, 0.34, 0.0),
-          vec3(agaveReach, 0.32, agaveReach * 0.88)
-        );
-      }
-    } else if (isShrub) {
-      float coarseHeight = mix(1.25, 3.15, age);
-      coarseMaterial = MATERIAL_SHRUB;
-      coarseDistance = ellipsoidDistance(
-        coarsePlant - vec3(0.0, coarseHeight * 0.55, 0.0),
-        vec3(1.15, coarseHeight * 0.55, 1.05) * age
-      );
+      coarseDistance = ellipsoidDistance(coarsePlant - vec3(0.0, 0.8, 0.0), vec3(0.8, 1.0, 0.8));
     } else {
-      float coarseHeight = mix(4.0, 8.2, age);
-      if (species < 0.24) coarseHeight = mix(7.4, 12.8, age);
-      else if (species < 0.5) coarseHeight = mix(4.2, 7.7, age);
-      else if (species < 0.88) coarseHeight = mix(5.6, 10.4, age);
-      else coarseHeight = mix(4.8, 8.8, age);
-      float coarseBaseRadius = mix(0.26, 0.54, species) * age;
-      vec3 coarseTrunkPoint = coarsePlant;
-      coarseTrunkPoint.xz *= rotate2(treeRotation);
-      float coarseTrunk = curvedTrunkDistance(
-        coarseTrunkPoint,
-        coarseHeight,
-        1.0,
-        coarseBaseRadius,
-        0.014,
-        lean,
-        leanAmount,
-        solarBias,
-        solarLean,
-        solarCross,
-        trunkCurve
-      );
-      float coarseRootAngle = hash21(cell + 61.3) * 6.2831853;
-      float coarseRootReach = mix(1.1, 2.15, hash21(cell + 66.4)) * age;
-      float coarseRootCollar = ellipsoidDistance(
-        coarsePlant - vec3(0.0, coarseBaseRadius * 0.34, 0.0),
-        vec3(coarseBaseRadius * 1.24, coarseBaseRadius * 0.66, coarseBaseRadius * 1.18)
-      );
-      float coarseRoots = rootPathDistance(
-        coarsePlant,
-        coarseRootAngle,
-        (hash21(cell + 63.8) - 0.5) * 0.48,
-        coarseRootReach,
-        coarseBaseRadius * 0.46,
-        coarseBaseRadius * 0.18,
-        coarseBaseRadius * 0.52,
-        0.035
-      );
-      coarseRoots = min(coarseRoots, rootPathDistance(
-        coarsePlant,
-        coarseRootAngle + mix(2.0, 2.65, hash21(cell + 85.6)),
-        (hash21(cell + 67.9) - 0.5) * 0.58,
-        coarseRootReach * mix(0.62, 0.82, random),
-        coarseBaseRadius * 0.38,
-        coarseBaseRadius * 0.14,
-        coarseBaseRadius * 0.4,
-        0.028
-      ));
-      coarseTrunk = min(coarseTrunk, min(coarseRootCollar, coarseRoots));
-      float coarseCrown = treeFoliageDistance(
-        coarseTrunkPoint,
-        cell,
-        species,
-        age,
-        random,
-        side,
-        coarseHeight,
-        lean,
-        leanAmount,
-        solarBias,
-        solarLean,
-        solarCross,
-        trunkCurve,
-        0.0
-      );
-      if (coarseCrown < coarseTrunk) {
-        coarseMaterial = MATERIAL_FOLIAGE_BASE + species;
-        coarseDistance = coarseCrown;
-      } else {
-        coarseDistance = coarseTrunk;
-      }
+      coarseDistance = taperedSegmentDistance(coarsePlant, vec3(0.0), vec3(0.0, isShrub ? 2.0 : 6.0, 0.0), 0.42 * age, 0.12 * age);
     }
     if (plantDetail < 0.001) {
       material = coarseMaterial;
-      return coarseDistance;
+      return coarseDistance * distanceScale;
     }
 
     if (isSucculent) {
@@ -221,7 +135,7 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
       }
 
       material = MATERIAL_SUCCULENT;
-      return morphPlantDistance(coarseDistance, succulent, plantDetail);
+      return morphPlantDistance(coarseDistance, succulent, plantDetail) * distanceScale;
     }
 
     if (isShrub) {
@@ -234,9 +148,9 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
       float shrubWood = taperedSegmentDistance(shrub, vec3(0.0), tipA, 0.14 * age, 0.045);
       shrubWood = min(shrubWood, taperedSegmentDistance(shrub, vec3(0.0, 0.12, 0.0), tipB, 0.13 * age, 0.038));
       shrubWood = min(shrubWood, taperedSegmentDistance(shrub, vec3(0.0, 0.18, 0.0), tipC, 0.11 * age, 0.032));
-      float shrubCrown = raggedCrown(shrub - tipA, vec3(0.9, 0.62, 0.78) * age, random * 9.0);
-      shrubCrown = min(shrubCrown, raggedCrown(shrub - tipB, vec3(0.78, 0.68, 0.86) * age, random * 13.0));
-      shrubCrown = min(shrubCrown, raggedCrown(shrub - tipC, vec3(0.72, 0.74, 0.68) * age, random * 19.0));
+      float shrubCrown = grownShrubCrown(shrub - tipA, vec3(0.9, 0.62, 0.78) * age, random * 9.0, foliageGrowth);
+      shrubCrown = min(shrubCrown, grownShrubCrown(shrub - tipB, vec3(0.78, 0.68, 0.86) * age, random * 13.0, foliageGrowth));
+      shrubCrown = min(shrubCrown, grownShrubCrown(shrub - tipC, vec3(0.72, 0.74, 0.68) * age, random * 19.0, foliageGrowth));
       #if SHADER_QUALITY_LEVEL >= 1
       if (uDetailScale > 0.74 && plantDetail > 0.002) {
         vec3 forkA = tipA + vec3(side * 0.34, shrubHeight * 0.14, -0.26) * age;
@@ -247,17 +161,17 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
         closeWood = min(closeWood, taperedSegmentDistance(shrub, mix(vec3(0.0, 0.12, 0.0), tipB, 0.66), forkB, 0.046, 0.014));
         closeWood = min(closeWood, taperedSegmentDistance(shrub, tipC, vineMid, 0.03, 0.018));
         closeWood = min(closeWood, taperedSegmentDistance(shrub, vineMid, vineTip, 0.018, 0.006));
-        float closeCrown = min(shrubCrown, raggedCrown(shrub - forkA, vec3(0.42, 0.32, 0.46) * age, random * 27.0));
-        closeCrown = min(closeCrown, raggedCrown(shrub - forkB, vec3(0.38, 0.3, 0.42) * age, random * 31.0));
+        float closeCrown = min(shrubCrown, grownShrubCrown(shrub - forkA, vec3(0.42, 0.32, 0.46) * age, random * 27.0, foliageGrowth));
+        closeCrown = min(closeCrown, grownShrubCrown(shrub - forkB, vec3(0.38, 0.3, 0.42) * age, random * 31.0, foliageGrowth));
         shrubWood = mix(shrubWood, closeWood, plantDetail);
         shrubCrown = mix(shrubCrown, closeCrown, plantDetail);
       }
       #endif
-      if (shrubCrown < shrubWood) {
+      if (shrubCrown < min(shrubWood, coarseDistance)) {
         material = MATERIAL_SHRUB;
-        return morphPlantDistance(coarseDistance, shrubCrown, plantDetail);
+        return morphPlantDistance(coarseDistance, shrubCrown, plantDetail) * distanceScale;
       }
-      return morphPlantDistance(coarseDistance, shrubWood, plantDetail);
+      return morphPlantDistance(coarseDistance, min(shrubWood, shrubCrown), plantDetail) * distanceScale;
     }
 
     float height = mix(4.0, 8.2, age);
@@ -677,14 +591,6 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
     }
 
     float detailedDistance = min(crown, wood);
-    if (coarseDistance <= detailedDistance) {
-      material = coarseMaterial;
-      return coarseDistance;
-    }
-    if (crown < wood) {
-      material = MATERIAL_FOLIAGE_BASE + species;
-      return crown;
-    }
-
-    return wood;
+    material = crown < min(wood, coarseDistance) ? MATERIAL_FOLIAGE_BASE + species : MATERIAL_BARK;
+    return morphPlantDistance(coarseDistance, detailedDistance, plantDetail) * distanceScale;
   }`

@@ -1,9 +1,11 @@
+import { mazeRecipe } from './maze.js'
+
 const DATABASE_NAME = 'mind-landscape'
 const STORE_NAME = 'worlds'
 const ACTIVE_WORLD = 'active'
-const GENERATOR_VERSION = '0.9.0'
+const GENERATOR_VERSION = '0.10.0'
 const DATABASE_VERSION = 1
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 const UINT32_MAX = 0xffffffff
 const ENTRY_PRESENCE_RATE = 1.12
 const COLOR_PRESENCE_BOOST = 1.48
@@ -106,7 +108,9 @@ export class WorldState {
     const repository = await WorldRepository.open()
     const saved = await repository.load()
     const state = new WorldState(repository, saved || createWorld())
-    if (!saved || saved.generatorVersion !== state.document.generatorVersion) await repository.save(state.document)
+    if (!saved || saved.generatorVersion !== state.document.generatorVersion
+      || saved.schemaVersion !== state.document.schemaVersion
+      || JSON.stringify(saved.maze) !== JSON.stringify(state.document.maze)) await repository.save(state.document)
     return state
   }
 
@@ -114,6 +118,7 @@ export class WorldState {
     this.repository = repository
     this.document = normalizeDocument(document)
     this.settings = mergeSettings(this.document.generated, this.document.overrides)
+    this.settings.maze = this.document.maze
     this.listeners = new Set()
   }
 
@@ -128,20 +133,30 @@ export class WorldState {
   }
 
   async addOrReplace(entry) {
-    const index = this.document.entries.findIndex((item) => item.source.key === entry.source.key)
+    return this.addOrReplaceMany([entry])
+  }
 
-    if (index >= 0) {
-      const previous = this.document.entries[index]
-      this.document.entries[index] = {
-        ...entry,
-        id: previous.id,
-        createdAt: previous.createdAt,
-        updatedAt: new Date().toISOString()
+  async addOrReplaceMany(entries) {
+    if (!entries.length) return
+    const indices = new Map()
+    this.document.entries.forEach((entry, index) => {
+      if (!indices.has(entry.source.key)) indices.set(entry.source.key, index)
+    })
+    for (const entry of entries) {
+      const index = indices.get(entry.source.key)
+      if (index !== undefined) {
+        const previous = this.document.entries[index]
+        this.document.entries[index] = {
+          ...entry,
+          id: previous.id,
+          createdAt: previous.createdAt,
+          updatedAt: new Date().toISOString()
+        }
+      } else {
+        indices.set(entry.source.key, this.document.entries.length)
+        this.document.entries.push(entry)
       }
-    } else {
-      this.document.entries.push(entry)
     }
-
     await this.commit(true)
   }
 
@@ -166,7 +181,9 @@ export class WorldState {
 
   async commit(regenerate) {
     if (regenerate) this.document.generated = deriveSettings(this.document.entries)
+    if (regenerate) this.document.maze = mazeRecipe(this.document.entries, this.document.seed)
     this.settings = mergeSettings(this.document.generated, this.document.overrides)
+    this.settings.maze = this.document.maze
     this.document.updatedAt = new Date().toISOString()
     await this.repository.save(this.document)
     for (const listener of this.listeners) listener(this.document)
@@ -208,7 +225,9 @@ class WorldRepository {
     return new Promise((resolve, reject) => {
       const transaction = this.database.transaction(STORE_NAME, mode)
       const request = operation(transaction.objectStore(STORE_NAME))
-      request.onsuccess = () => resolve(request.result)
+      transaction.oncomplete = () => resolve(request.result)
+      transaction.onabort = () => reject(transaction.error || new Error('World save was aborted.'))
+      transaction.onerror = () => reject(transaction.error)
       request.onerror = () => reject(request.error)
     })
   }
@@ -262,6 +281,7 @@ export function normalizeDocument(document) {
   world.schemaVersion = SCHEMA_VERSION
   world.generatorVersion = GENERATOR_VERSION
   world.seed = clamp(Number(world.seed), 0, 1)
+  world.maze = mazeRecipe(world.entries, world.seed)
   if (needsRegeneration) world.generated = deriveSettings(world.entries)
   return world
 }

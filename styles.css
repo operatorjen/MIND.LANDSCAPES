@@ -317,11 +317,11 @@ h1 {
 
 .dialog-shell {
   display: grid;
-  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto auto auto minmax(320px, 1fr) auto;
   width: 100%;
   min-width: 0;
   height: 100%;
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .dialog-header,
@@ -664,3 +664,10 @@ h1 {
     animation: none;
   }
 }
+
+.art-section { padding: 22px 24px; border-top: 1px solid #ffffff20; }
+.art-section p { font-size: 13px; line-height: 1.5; opacity: .8; }
+.art-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 14px 0; }
+.art-section .cycle-field { margin-top: 12px; }
+#art-preview img { display: block; width: 100%; margin-top: 12px; background: repeating-conic-gradient(#7773 0% 25%, #bbb3 0% 50%) 0 / 16px 16px; border-radius: 8px; }
+.art-section button:disabled { opacity: .5; cursor: progress; }

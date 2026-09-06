@@ -40,9 +40,21 @@ test('fine concrete aggregate material is composed into the shader catalog', () 
   const concrete = materialCatalog.find(({ key }) => key === 'concrete-aggregate')
   assert.ok(concrete)
   assert.equal(concrete.mapping, 'dominant-axis world-space planar')
-  assert.deepEqual(concrete.textureInputs, [])
+  assert.deepEqual(concrete.textureInputs, ['assets/textures/concrete-height.png (linear grayscale height)'])
+  assert.match(materialGlsl, /texture2D\(uConcreteHeightMap/)
   assert.match(materialGlsl, /sampleConcreteAggregate/)
   assert.match(materialGlsl, /concreteAggregateNormal/)
+})
+
+test('sunlit exterior overgrowth is texture-backed, solar-oriented and quality-morphed', () => {
+  const overgrowth = materialCatalog.find(({ key }) => key === 'sunlit-overgrowth')
+  assert.ok(overgrowth)
+  assert.equal(overgrowth.mapping, 'vertical world-space planar with stable solar exposure')
+  assert.deepEqual(overgrowth.textureInputs, ['assets/textures/sunlit-overgrowth-mask.png (linear grayscale coverage)'])
+  assert.match(materialGlsl, /sampleSunlitOvergrowth/)
+  assert.match(materialGlsl, /stableSolarPathExposure/)
+  assert.match(materialGlsl, /dryStructureInterior\(position\)/)
+  assert.match(materialGlsl, /smoothstep\(0\.62, 1\.04, uDetailScale\)/)
 })
 
 test('material ids and shading boundaries share one ordered source of truth', () => {

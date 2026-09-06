@@ -10,9 +10,26 @@ import {
   concreteAggregateDefaults,
   concreteAggregateGlsl
 } from './concrete-aggregate.glsl.js'
+import {
+  sunlitOvergrowthDefaults,
+  sunlitOvergrowthGlsl
+} from './sunlit-overgrowth.glsl.js'
+import { personalArtGlsl } from './personal-art.glsl.js'
 import { MATERIAL_BOUNDARY } from '../../config/materials.js'
 
 export const materialCatalog = Object.freeze([
+  Object.freeze({
+    key: 'personal-art',
+    label: 'Personal art',
+    reference: 'locally imported transparent art with seeded spray wear',
+    appliesTo: 'interior walls, especially underground halls',
+    materialRange: Object.freeze([4, MATERIAL_BOUNDARY.liminal]),
+    mapping: 'building-local wall panels',
+    outputs: Object.freeze(['alpha-blended-pigment']),
+    textureInputs: Object.freeze(['local browser art atlas (RGBA)']),
+    controls: Object.freeze({ maxImages: 32, tilePixels: 256 }),
+    shader: personalArtGlsl
+  }),
   Object.freeze({
     key: 'bark-contours',
     label: 'Nested contour bark',
@@ -41,14 +58,26 @@ export const materialCatalog = Object.freeze([
   Object.freeze({
     key: 'concrete-aggregate',
     label: 'Fine organic concrete aggregate',
-    reference: 'small irregular bent aggregate marks derived from the supplied hand-drawn texture',
+    reference: 'fine cast-concrete grain, tiny pores and sparse subscale aggregate',
     appliesTo: 'exterior concrete architecture',
     materialRange: Object.freeze([MATERIAL_BOUNDARY.grass, MATERIAL_BOUNDARY.concrete]),
     mapping: 'dominant-axis world-space planar',
     outputs: Object.freeze(['aggregate-mask', 'pore-mask', 'matrix-tone', 'weathering-mask', 'height']),
-    textureInputs: Object.freeze([]),
+    textureInputs: Object.freeze(['assets/textures/concrete-height.png (linear grayscale height)']),
     controls: concreteAggregateDefaults,
     shader: concreteAggregateGlsl
+  }),
+  Object.freeze({
+    key: 'sunlit-overgrowth',
+    label: 'Solar-path moss and climbing vines',
+    reference: 'sparse moss colonies and fine climbing tendrils on sun-exposed concrete',
+    appliesTo: 'exterior concrete walls',
+    materialRange: Object.freeze([MATERIAL_BOUNDARY.grass, MATERIAL_BOUNDARY.concrete]),
+    mapping: 'vertical world-space planar with stable solar exposure',
+    outputs: Object.freeze(['moss-mask', 'vine-mask', 'solar-exposure', 'growth-morph']),
+    textureInputs: Object.freeze(['assets/textures/sunlit-overgrowth-mask.png (linear grayscale coverage)']),
+    controls: sunlitOvergrowthDefaults,
+    shader: sunlitOvergrowthGlsl
   })
 ])
 

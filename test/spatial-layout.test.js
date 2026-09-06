@@ -65,7 +65,7 @@ test('structure collision preserves walls, nave, and doorway access', () => {
 test('underground portals resolve to a stable destination', () => {
   const settings = structureSettings()
   const layout = structureLayout(-3, -3, settings, SEED)
-  const portal = undergroundPathAt(layout, 0.98)
+  const portal = undergroundPathAt(layout, 1)
   const position = worldPoint(layout, portal.x, portal.z, layout.ground - 2)
   const destination = portalDestinationAt(position, settings, SEED)
 
@@ -83,7 +83,7 @@ test('underground corridors extend and meander along a traversable centerline', 
   const end = samples.at(-1)
   const largestDeviation = Math.max(...samples.map(({ x }) => Math.abs(x - start.x)))
 
-  assert.ok(start.z - end.z > layout.depth * 0.55)
+  assert.ok(Math.hypot(start.x - end.x, start.z - end.z) > layout.width * 0.15)
   assert.ok(largestDeviation > layout.width * 0.035)
   for (const sample of samples.slice(1, -1)) {
     const position = worldPoint(layout, sample.x, sample.z, layout.ground - 3.4)

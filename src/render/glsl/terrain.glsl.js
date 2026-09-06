@@ -61,7 +61,7 @@ export const terrainGlsl = `
 
     vec2 center = structureCenterForCell(cell);
     vec2 planar = point - center;
-    if (max(abs(planar.x), abs(planar.y)) > 38.0) return height;
+    if (max(abs(planar.x), abs(planar.y)) > 48.0) return height;
     float ground = terrainFoundation(center);
     if (ground < uWaterLevel + STRUCTURE_WATER_CLEARANCE) return height;
 
@@ -79,34 +79,38 @@ export const terrainGlsl = `
     float stairX = stairSide * width * 0.22;
     float stairStart = depth * 0.2;
     float stairEnd = -depth * 0.14;
-    float tunnelRoll = fract(
-      hash21(cell + 233.1)
-      + uSandyInteriors * 0.16
-      + uOrnateInteriors * 0.24
-      + uPsychedelicIntensity * 0.18
-    );
-    float tunnelFactor = mix(TUNNEL_FACTOR_MIN, TUNNEL_FACTOR_MAX, tunnelRoll);
-    float styleRoll = fract(
-      hash21(cell + 155.4)
-      + uMechanicalIntensity * 0.21
-      + uRitualIntensity * 0.33
-      + uOrnateInteriors * 0.17
-      + uAbandonedInteriors * 0.13
-    );
-    float structureStyle = floor(styleRoll * 4.0);
     if (abs(local.x - stairX) < STAIR_WIDTH && local.y <= stairStart && local.y >= stairEnd) {
       float stairProgress = clamp((stairStart - local.y) / (stairStart - stairEnd), 0.0, 1.0);
       float stepped = floor(stairProgress * STAIR_STEPS) / STAIR_STEPS;
       height = min(height, ground - stepped * UNDERGROUND_DESCENT);
     }
 
-    float chamberHalfX = width * 0.2;
-    float chamberStart = stairEnd + 0.2;
-    float chamberEnd = -depth * min(0.84, tunnelFactor + 0.25);
-    float corridorX = stairX + undergroundCenterOffset(local.y, chamberStart, chamberEnd, chamberHalfX, variant, structureStyle);
-    if (abs(local.x - corridorX) < chamberHalfX && local.y <= chamberStart && local.y >= chamberEnd) {
+    float lastRow = -depth * 0.78;
+    if (abs(local.x) < width * 0.5 && local.y < stairEnd + 0.2 && local.y > lastRow - 2.1) {
       height = min(height, ground - UNDERGROUND_DESCENT);
     }
     return height;
+  }
+  bool dryStructureInterior(vec3 point) {
+    vec2 cell = floor((point.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    if (hash21(cell + uSeed * 0.043) > structurePresence()) return false;
+    vec2 center = structureCenterForCell(cell);
+    vec2 planar = point.xz - center;
+    if (max(abs(planar.x), abs(planar.y)) > 48.0) return false;
+    float ground = terrainFoundation(center);
+    if (ground < uWaterLevel + STRUCTURE_WATER_CLEARANCE || point.y > ground + 1.2) return false;
+    float variant = hash21(cell + 17.8);
+    float width = mix(15.0, 23.0, hash21(cell + 4.9)) * mix(0.9, 1.18, clamp(uMechanicalIntensity * 0.55 + uStructures * 0.2, 0.0, 1.0));
+    float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0));
+    vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * planar;
+    return abs(local.x) < width * 0.62 + 0.6
+      && local.y < depth * 0.58 + 0.6 && local.y > -depth * 0.78 - 2.5;
+  }
+
+  float outdoorWaterDistance(vec3 origin, vec3 direction) {
+    if (direction.y >= -0.0001) return -1.0;
+    float candidate = (uWaterLevel - origin.y) / direction.y;
+    if (candidate <= 0.0) return -1.0;
+    return dryStructureInterior(origin + direction * candidate) ? -1.0 : candidate;
   }
 `

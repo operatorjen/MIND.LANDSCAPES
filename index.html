@@ -63,6 +63,23 @@
           <div id="memory-list" class="memory-list"></div>
         </section>
 
+        <section id="personal-art" class="art-section" aria-labelledby="art-heading">
+          <h3 id="art-heading">Personal art</h3>
+          <p>Your images become weathered wall art, especially in underground halls. PNG transparency is preserved. Art stays in this browser and is excluded from world JSON and landscape analysis.</p>
+          <div class="art-actions">
+            <button id="art-folder-button" class="text-button" type="button">Choose folder</button>
+            <button id="art-files-button" class="text-button" type="button">Choose ZIP / images</button>
+            <button id="art-clear" class="text-button" type="button">Remove art</button>
+          </div>
+          <input id="art-folder" type="file" webkitdirectory multiple hidden>
+          <input id="art-files" type="file" accept=".zip,.png,.jpg,.jpeg" multiple hidden>
+          <p class="art-help">Up to 32 PNG / JPEG images, 16 MB each. A new pack replaces the current pack.</p>
+          <label class="toggle-field"><input id="art-enabled" type="checkbox" checked> Show personal art</label>
+          <label class="cycle-field">Wall coverage <input id="art-density" type="range" min="0" max="1" step="0.05" value="0.7"></label>
+          <p id="art-message" role="status" aria-live="polite">No personal art added yet.</p>
+          <div id="art-preview"></div>
+        </section>
+
         <section class="rendering-section" aria-labelledby="rendering-heading">
           <div>
             <h3 id="rendering-heading">Rendering</h3>

@@ -208,5 +208,9 @@ export const vegetationCommonGlsl = `  float timelessPhase() {
     float ragged = sin(point.x * 3.7 + phase) * sin(point.y * 4.3 - phase * 0.7) * sin(point.z * 3.1 + phase * 1.3);
     ragged += sin((point.x + point.z) * 6.2 - point.y * 2.4 + phase) * 0.45;
     return (length(shaped) - 1.0) * min(scale.x, scale.z) + ragged * 0.13;
-  }`
+  }
 
+  float grownShrubCrown(vec3 point, vec3 scale, float phase, float growth) {
+    if (growth < 0.002) return 1000.0;
+    return raggedCrown(point / growth, scale, phase) * growth;
+  }`

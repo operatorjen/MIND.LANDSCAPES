@@ -96,10 +96,10 @@ test('randomized underground paths agree with collision and portal layout', () =
     }
 
     const middle = path[6]
-    const wall = worldPoint(layout, middle.x + layout.width * 0.2, middle.z, layout.ground - 3.4)
+    const wall = worldPoint(layout, layout.width * 0.48, -layout.depth * 0.4, layout.ground - 3.4)
     assert.equal(isPositionBlocked(wall, settings, seed, RADIUS), true)
 
-    const portal = undergroundPathAt(layout, 0.98)
+    const portal = undergroundPathAt(layout, 1)
     const portalPosition = worldPoint(layout, portal.x, portal.z, layout.ground - 2)
     const firstDestination = portalDestinationAt(portalPosition, settings, seed)
     const secondDestination = portalDestinationAt(portalPosition, settings, seed)

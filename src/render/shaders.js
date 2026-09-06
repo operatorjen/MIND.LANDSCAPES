@@ -30,6 +30,7 @@ import { lightingGlsl } from './glsl/lighting.glsl.js'
 import { raymarchGlsl } from './glsl/raymarch.glsl.js'
 import { sceneGlsl } from './glsl/scene.glsl.js'
 import { terrainGlsl } from './glsl/terrain.glsl.js'
+import { mazeGlsl } from './glsl/maze.glsl.js'
 import { vegetationGlsl } from './glsl/vegetation.glsl.js'
 import { materialGlsl } from './materials/catalog.js'
 
@@ -86,20 +87,20 @@ const shaderPreamble = (level) => {
 const shaderMain = `
   void main() {
     vec3 origin = cameraPosition;
-    vec3 direction = normalize(vWorldPosition - cameraPosition);
+    vec3 direction = cameraRayDirection();
     vec3 position;
     float material;
-    float sceneHit = marchScene(origin, direction, position, material);
-    float waterDistance = -1.0;
+    float waterDistance = outdoorWaterDistance(origin, direction);
 
-    if (direction.y < -0.0001) {
-      float candidate = (uWaterLevel - origin.y) / direction.y;
-      if (candidate > 0.0 && (sceneHit < 0.0 || candidate < sceneHit)) waterDistance = candidate;
+    float sceneHit = marchScene(origin, direction, waterDistance, position, material);
+    vec3 color;
+    if (waterDistance > 0.0 && (sceneHit < 0.0 || waterDistance < sceneHit)) {
+      color = shadeWater(origin, direction, waterDistance);
+    } else if (sceneHit > 0.0) {
+      color = shadeScene(direction, position, sceneHit, material);
+    } else {
+      color = skyColor(direction);
     }
-
-    vec3 color = skyColor(direction);
-    if (sceneHit > 0.0) color = shadeScene(direction, position, sceneHit, material);
-    if (waterDistance > 0.0) color = shadeWater(origin, direction, waterDistance);
 
     float luminance = dot(color, vec3(0.2126, 0.7152, 0.0722));
     float chroma = clamp(1.08 + uChromaticIntensity * 0.48, 1.0, 2.05);
@@ -112,6 +113,10 @@ const shaderMain = `
     color *= 1.0 - smoothstep(0.35, 0.78, vignette) * 0.18;
     color = color / (color + vec3(1.0));
     color = pow(color, vec3(0.4545));
+    vec2 glowUV = (gl_FragCoord.xy - uViewport.xy) / uViewport.zw - 0.5;
+    float glowRadius = length(glowUV) / 0.707107;
+    float warmBloom = uPortalGlow * (1.0 - smoothstep(uPortalGlow * 1.8, uPortalGlow * 1.8 + 0.45, glowRadius));
+    color = mix(color, vec3(1.0, 0.88, 0.65), warmBloom);
     gl_FragColor = vec4(color, 1.0);
   }
 `
@@ -123,6 +128,7 @@ export function fragmentShaderForQuality(level = 'medium') {
     materialConstantsGlsl,
     uniformDeclarations,
     coreGlsl,
+    mazeGlsl,
     terrainGlsl,
     vegetationGlsl,
     architectureGlsl,

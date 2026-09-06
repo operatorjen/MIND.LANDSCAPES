@@ -1,3 +1,4 @@
+import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, mazeRouteAt, portalArrival, hashMaze } from './maze.js'
 import {
   STAIR_WIDTH,
   STRUCTURE_CELL_SIZE,
@@ -16,13 +17,30 @@ import {
 } from '../config/world.js'
 
 const DOORWAY_TOLERANCE = 0.12
-const PORTAL_SEARCH_RADIUS = 10
 const NEIGHBORHOOD_RADIUS = 1
 const STRUCTURE_CELL_HALF = STRUCTURE_CELL_SIZE * 0.5
 
-export function terrainHeightAt(x, z, settings, seed) {
+export function terrainHeightAt(x, z, settings, seed, cache) {
+  if (!cache) return computeTerrainHeightAt(x, z, settings, seed)
+  return cache.remember('terrain', `${x},${z}`, () => computeTerrainHeightAt(x, z, settings, seed, cache))
+}
+
+function computeTerrainHeightAt(x, z, settings, seed, cache) {
   const terrainHeight = terrainBaseHeightAt(x, z, settings, seed)
-  return gradeStructureGroundAt(x, z, terrainHeight, settings, seed)
+  return gradeStructureGroundAt(x, z, terrainHeight, settings, seed, cache)
+}
+
+export function walkingSurfaceAt(x, z, eyeY, settings, seed, cache) {
+  const floor = terrainHeightAt(x, z, settings, seed, cache)
+  const cellX = Math.floor((x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
+  const cellZ = Math.floor((z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
+  const layout = structureLayout(cellX, cellZ, settings, seed, cache)
+  if (!layout || eyeY < layout.ground + 0.1) return floor
+  const local = structureLocal(x - layout.centerX, z - layout.centerZ, layout.angle)
+  const stairs = undergroundLayout(layout)
+  const onStairs = Math.abs(local.x - stairs.stairX) < stairs.stairWidth
+    && local.z <= stairs.stairStart && local.z >= stairs.stairEnd
+  return !onStairs && mazeDistance(local, layout) < 0 ? layout.ground : floor
 }
 
 function terrainBaseHeightAt(x, z, settings, seed) {
@@ -58,10 +76,10 @@ function terrainFoundationHeightAt(x, z, settings) {
   return mix(height, Math.min(height, settings.water.level - 0.28), river)
 }
 
-function gradeStructureGroundAt(x, z, terrainHeight, settings, seed) {
+function gradeStructureGroundAt(x, z, terrainHeight, settings, seed, cache) {
   const cellX = Math.floor((x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
   const cellZ = Math.floor((z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
-  const layout = structureLayout(cellX, cellZ, settings, seed)
+  const layout = structureLayout(cellX, cellZ, settings, seed, cache)
   if (!layout) return terrainHeight
 
   const local = structureLocal(x - layout.centerX, z - layout.centerZ, layout.angle)
@@ -85,45 +103,34 @@ function structureFloorHeight(local, layout, surfaceHeight) {
     surfaceHeight = Math.min(surfaceHeight, layout.ground - stepped * underground.descent)
   }
 
-  if (local.z <= underground.chamberStart && local.z >= underground.chamberEnd) {
-    const corridorX = undergroundCenterXAt(local.z, underground, layout)
-    if (Math.abs(local.x - corridorX) < underground.chamberHalfX) {
-      surfaceHeight = Math.min(surfaceHeight, layout.ground - underground.descent)
-    }
-  }
+  if (mazeDistance(local, layout) < 0) surfaceHeight = Math.min(surfaceHeight, layout.ground - underground.descent)
 
   return surfaceHeight
 }
 
-export function portalDestinationAt(position, settings, seed) {
+export function portalDestinationAt(position, settings, seed, cache) {
   const baseCellX = Math.floor((position.x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
   const baseCellZ = Math.floor((position.z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
 
   for (let offsetX = -NEIGHBORHOOD_RADIUS; offsetX <= NEIGHBORHOOD_RADIUS; offsetX++) {
     for (let offsetZ = -NEIGHBORHOOD_RADIUS; offsetZ <= NEIGHBORHOOD_RADIUS; offsetZ++) {
-      const source = structureLayout(baseCellX + offsetX, baseCellZ + offsetZ, settings, seed)
+      const source = structureLayout(baseCellX + offsetX, baseCellZ + offsetZ, settings, seed, cache)
       if (!source) continue
       const local = structureLocal(position.x - source.centerX, position.z - source.centerZ, source.angle)
-      const underground = undergroundLayout(source)
-      const portalX = undergroundCenterXAt(underground.portalZ, underground, source)
-      const atPortal = Math.abs(local.x - portalX) < underground.chamberHalfX - 0.45
-        && local.z <= underground.portalZ + 0.9
-        && local.z >= underground.portalZ - 0.35
-        && position.y < source.ground - 0.8
-      if (!atPortal) continue
-
-      const destination = findPortalDestination(source, settings, seed)
+      if (position.y >= source.ground - 0.8 || Math.abs(local.x) > source.width * 0.5 || local.z > -source.depth * 0.14) continue
+      const maze = mazeForLayout(source)
+      const portalIndex = maze.portals.findIndex(node => Math.hypot(local.x - node.x, local.z - node.z) < 0.68)
+      if (portalIndex < 0) continue
+      const destination = findPortalDestination(source, portalIndex, settings, seed, cache)
       if (!destination) return null
-      const destinationUnderground = undergroundLayout(destination)
-      const exitZ = destinationUnderground.portalZ + 1.55
-      const exit = structureWorld(
-        undergroundCenterXAt(exitZ, destinationUnderground, destination),
-        exitZ,
-        destination
-      )
+      const arrivalIndex = destination === source ? portalIndex + 1 : hashMaze(`${source.mazeRecipe.seed}:${source.cellX},${source.cellZ}:${portalIndex}:arrival`)
+      const arrival = portalArrival(destination, arrivalIndex)
+      const exit = structureWorld(arrival.x, arrival.z, destination)
+      const worldDirection = structureWorld(arrival.x + arrival.dx, arrival.z + arrival.dz, destination)
       return {
         x: exit.x,
         z: exit.z,
+        yaw: Math.atan2(-(worldDirection.x - exit.x), -(worldDirection.z - exit.z)),
         rotation: destination.angle - source.angle + Math.PI
       }
     }
@@ -132,23 +139,20 @@ export function portalDestinationAt(position, settings, seed) {
   return null
 }
 
-export function isUndergroundAt(x, z, settings, seed) {
+export function isUndergroundAt(x, z, settings, seed, cache) {
   const baseCellX = Math.floor((x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
   const baseCellZ = Math.floor((z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
 
   for (let offsetX = -NEIGHBORHOOD_RADIUS; offsetX <= NEIGHBORHOOD_RADIUS; offsetX++) {
     for (let offsetZ = -NEIGHBORHOOD_RADIUS; offsetZ <= NEIGHBORHOOD_RADIUS; offsetZ++) {
-      const layout = structureLayout(baseCellX + offsetX, baseCellZ + offsetZ, settings, seed)
+      const layout = structureLayout(baseCellX + offsetX, baseCellZ + offsetZ, settings, seed, cache)
       if (!layout) continue
       const local = structureLocal(x - layout.centerX, z - layout.centerZ, layout.angle)
       const underground = undergroundLayout(layout)
       const onStairs = Math.abs(local.x - underground.stairX) < underground.stairWidth
         && local.z < underground.stairStart - 0.05
         && local.z >= underground.stairEnd
-      const corridorX = undergroundCenterXAt(local.z, underground, layout)
-      const inChamber = Math.abs(local.x - corridorX) < underground.chamberHalfX
-        && local.z <= underground.chamberStart
-        && local.z >= underground.chamberEnd
+      const inChamber = local.z < underground.stairEnd + 0.2 && mazeDistance(local, layout) < 0
       if (onStairs || inChamber) return true
     }
   }
@@ -156,75 +160,44 @@ export function isUndergroundAt(x, z, settings, seed) {
   return false
 }
 
-function findPortalDestination(source, settings, seed) {
-  const offsets = [
-    [1, 0], [1, 1], [0, 1], [-1, 1],
-    [-1, 0], [-1, -1], [0, -1], [1, -1]
-  ]
-  const shift = Math.floor(source.variant * offsets.length)
-
-  for (let radius = 1; radius <= PORTAL_SEARCH_RADIUS; radius++) {
-    for (let index = 0; index < offsets.length; index++) {
-      const offset = offsets[(index + shift) % offsets.length]
-      const destination = structureLayout(
-        source.cellX + offset[0] * radius,
-        source.cellZ + offset[1] * radius,
-        settings,
-        seed
-      )
-      if (destination) return destination
-    }
+function findPortalDestination(source, portalIndex, settings, seed, cache) {
+  const identity = `${source.mazeRecipe.seed}:${source.cellX},${source.cellZ}:${portalIndex}`
+  const reach = source.mazeRecipe.reach
+  for (let attempt = 0; attempt < 96; attempt++) {
+    const x = hashMaze(`${identity}:${attempt}:x`) % (reach * 2 + 1) - reach
+    const z = hashMaze(`${identity}:${attempt}:z`) % (reach * 2 + 1) - reach
+    if (Math.max(Math.abs(x), Math.abs(z)) < 2) continue
+    const destination = structureLayout(source.cellX + x, source.cellZ + z, settings, seed, cache)
+    if (destination) return destination
   }
-
-  return null
+  for (let x = -reach; x <= reach; x++) for (let z = -reach; z <= reach; z++) {
+    if (x === 0 && z === 0) continue
+    const destination = structureLayout(source.cellX + x, source.cellZ + z, settings, seed, cache)
+    if (destination) return destination
+  }
+  return source
 }
 
 function undergroundLayout(layout) {
   const stairEnd = -layout.depth * 0.14
-  const chamberEnd = -layout.depth * Math.min(0.84, layout.tunnelFactor + 0.25)
   return {
     stairX: (layout.variant > 0.5 ? 1 : -1) * layout.width * 0.22,
     stairStart: layout.depth * 0.2,
     stairEnd,
     stairWidth: STAIR_WIDTH,
-    chamberHalfX: layout.width * 0.2,
-    chamberStart: stairEnd + 0.2,
-    portalZ: chamberEnd + 0.62,
-    chamberEnd,
     descent: UNDERGROUND_DESCENT
   }
 }
 
-function undergroundCenterXAt(z, underground, layout) {
-  const progress = clamp(
-    (underground.chamberStart - z) / (underground.chamberStart - underground.chamberEnd),
-    0,
-    1
-  )
-  const envelope = smoothstep(0, 0.18, progress)
-  const phase = layout.variant * Math.PI * 2 + layout.style * 1.17
-  const primary = Math.sin(progress * 5.2 + phase) - Math.sin(phase)
-  const secondaryPhase = phase * 0.61
-  const secondary = Math.sin(progress * 10.7 + secondaryPhase) - Math.sin(secondaryPhase)
-  const offset = envelope * underground.chamberHalfX * 0.32 * (primary * 0.68 + secondary * 0.24)
-  return underground.stairX + offset
-}
-
 export function undergroundPathAt(layout, progress) {
-  const underground = undergroundLayout(layout)
-  const amount = clamp(progress, 0, 1)
-  const z = mix(underground.chamberStart, underground.chamberEnd, amount)
-  return {
-    x: undergroundCenterXAt(z, underground, layout),
-    z
-  }
+  return mazeRouteAt(layout, progress)
 }
 
-export function isPositionBlocked(position, settings, seed, radius = 0.34) {
-  return isBlockedByStructure(position, settings, seed, radius) || isBlockedByTree(position, settings, seed, radius)
+export function isPositionBlocked(position, settings, seed, radius = 0.34, cache) {
+  return isBlockedByStructure(position, settings, seed, radius, cache) || isBlockedByTree(position, settings, seed, radius, cache)
 }
 
-function isBlockedByTree(position, settings, seed, radius) {
+function isBlockedByTree(position, settings, seed, radius, cache) {
   const shaderSeed = gpuMultiply(seed, WORLD_SEED_SCALE)
   const baseCellX = Math.floor((position.x + TREE_CELL_SIZE * 0.5) / TREE_CELL_SIZE)
   const baseCellZ = Math.floor((position.z + TREE_CELL_SIZE * 0.5) / TREE_CELL_SIZE)
@@ -234,10 +207,10 @@ function isBlockedByTree(position, settings, seed, radius) {
       const cellX = baseCellX + offsetX
       const cellZ = baseCellZ + offsetZ
       const center = treeCenter(cellX, cellZ, shaderSeed)
-      const vegetation = vegetationAt(cellX, cellZ, center, settings, shaderSeed, seed)
+      const vegetation = vegetationAt(cellX, cellZ, center, settings, shaderSeed, seed, cache)
       if (!vegetation) continue
 
-      const ground = terrainHeightAt(center.x, center.z, settings, seed)
+      const ground = vegetation.ground
       const { age, kind, species } = vegetation
       const vertical = position.y - ground
 
@@ -275,7 +248,12 @@ function isBlockedByTree(position, settings, seed, radius) {
   return false
 }
 
-function vegetationAt(cellX, cellZ, center, settings, shaderSeed, seed) {
+function vegetationAt(cellX, cellZ, center, settings, shaderSeed, seed, cache) {
+  if (!cache) return computeVegetationAt(cellX, cellZ, center, settings, shaderSeed, seed)
+  return cache.remember('vegetation', `${cellX},${cellZ}`, () => computeVegetationAt(cellX, cellZ, center, settings, shaderSeed, seed, cache))
+}
+
+function computeVegetationAt(cellX, cellZ, center, settings, shaderSeed, seed, cache) {
   const random = hash21(cellX + shaderSeed * 0.07, cellZ + shaderSeed * 0.07, shaderSeed)
   const moisture = Math.exp(-Math.abs(center.x - riverCenter(center.z)) * 0.08)
   const cluster = noise21(center.x * 0.018 + shaderSeed * 0.031, center.z * 0.018 + shaderSeed * 0.031, shaderSeed)
@@ -291,13 +269,15 @@ function vegetationAt(cellX, cellZ, center, settings, shaderSeed, seed) {
 
   const structureCellX = Math.floor((center.x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
   const structureCellZ = Math.floor((center.z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
-  const structure = structureLayout(structureCellX, structureCellZ, settings, seed)
+  const structure = structureLayout(structureCellX, structureCellZ, settings, seed, cache)
   if (structure && Math.hypot(center.x - structure.centerX, center.z - structure.centerZ) < STRUCTURE_VEGETATION_CLEARANCE) return null
-  if (terrainHeightAt(center.x, center.z, settings, seed) < settings.water.level + VEGETATION_WATER_CLEARANCE) return null
+  const ground = terrainHeightAt(center.x, center.z, settings, seed, cache)
+  if (ground < settings.water.level + VEGETATION_WATER_CLEARANCE) return null
 
   const kindSelector = hash21(cellX + 84.3, cellZ + 84.3, shaderSeed) * Math.max(vegetationWeight, 0.001)
   const speciesRoll = hash21(cellX + 42.6, cellZ + 42.6, shaderSeed)
   return {
+    ground,
     age: mix(0.72, 1.24, hash21(cellX + 8.7, cellZ + 8.7, shaderSeed)),
     kind: kindSelector < succulentWeight ? 'succulent' : kindSelector < succulentWeight + shrubWeight ? 'shrub' : 'tree',
     species: meadowBiome > 0.45 ? mix(0.52, 0.86, speciesRoll) : speciesRoll
@@ -322,13 +302,13 @@ function meadowBiomeAt(x, z, duneBiome, settings, shaderSeed) {
   return smoothstep(0.37, 0.72, meadowField + moisture * 0.24 + settings.generation.grasses * 0.16 - duneBiome * 0.58)
 }
 
-function isBlockedByStructure(position, settings, seed, radius) {
+function isBlockedByStructure(position, settings, seed, radius, cache) {
   const baseCellX = Math.floor((position.x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
   const baseCellZ = Math.floor((position.z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
 
   for (let offsetX = -NEIGHBORHOOD_RADIUS; offsetX <= NEIGHBORHOOD_RADIUS; offsetX++) {
     for (let offsetZ = -NEIGHBORHOOD_RADIUS; offsetZ <= NEIGHBORHOOD_RADIUS; offsetZ++) {
-      const layout = structureLayout(baseCellX + offsetX, baseCellZ + offsetZ, settings, seed)
+      const layout = structureLayout(baseCellX + offsetX, baseCellZ + offsetZ, settings, seed, cache)
       if (!layout) continue
       const local = structureLocal(position.x - layout.centerX, position.z - layout.centerZ, layout.angle)
       if (isBlockedByUnderground(local, position.y, layout, radius)) return true
@@ -370,6 +350,29 @@ function isBlockedByStructure(position, settings, seed, radius) {
   return false
 }
 
+export function mazeWallNormalAt(position, settings, seed, cache) {
+  const cellX = Math.floor((position.x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
+  const cellZ = Math.floor((position.z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
+  const layout = structureLayout(cellX, cellZ, settings, seed, cache)
+  if (!layout || position.y >= layout.ground - 0.8) return null
+  const local = structureLocal(position.x - layout.centerX, position.z - layout.centerZ, layout.angle)
+  const distance = mazeCollisionDistance(local, layout)
+  if (distance >= 999) return null
+  const epsilon = 0.025
+  const dx = mazeCollisionDistance({ x: local.x + epsilon, z: local.z }, layout)
+    - mazeCollisionDistance({ x: local.x - epsilon, z: local.z }, layout)
+  const dz = mazeCollisionDistance({ x: local.x, z: local.z + epsilon }, layout)
+    - mazeCollisionDistance({ x: local.x, z: local.z - epsilon }, layout)
+  const length = Math.hypot(dx, dz)
+  const cosine = Math.cos(layout.angle), sine = Math.sin(layout.angle)
+  return {
+    x: length < 0.00001 ? 0 : (cosine * dx - sine * dz) / length,
+    z: length < 0.00001 ? 0 : (sine * dx + cosine * dz) / length,
+    cosine,
+    sine
+  }
+}
+
 function isBlockedByUnderground(local, worldY, layout, radius) {
   const underground = undergroundLayout(layout)
   const vertical = worldY - (layout.ground - underground.descent)
@@ -377,18 +380,21 @@ function isBlockedByUnderground(local, worldY, layout, radius) {
 
   const stairSpan = local.z <= underground.stairStart + radius
     && local.z >= underground.stairEnd - radius
-  const chamberSpan = local.z <= underground.chamberStart + radius
-    && local.z >= underground.chamberEnd - radius
   const stairWall = Math.abs(local.x - underground.stairX) >= underground.stairWidth - radius
     && Math.abs(local.x - underground.stairX) < underground.stairWidth + layout.wall + radius
-  const corridorX = undergroundCenterXAt(local.z, underground, layout)
-  const chamberWall = Math.abs(local.x - corridorX) >= underground.chamberHalfX - radius
-    && Math.abs(local.x - corridorX) < underground.chamberHalfX + layout.wall + radius
+  if (stairSpan && stairWall && local.z > underground.stairEnd + 0.2) return true
+  if (local.z > underground.stairEnd + 0.2 || local.z < -layout.depth * 0.78 - 2.5
+    || Math.abs(local.x) > layout.width * 0.5 + radius) return false
+  return mazeCollisionDistance(local, layout) > -radius
 
-  return stairSpan && stairWall || chamberSpan && chamberWall
 }
 
-export function structureLayout(cellX, cellZ, settings, seed) {
+export function structureLayout(cellX, cellZ, settings, seed, cache) {
+  if (!cache) return computeStructureLayout(cellX, cellZ, settings, seed)
+  return cache.remember('structures', `${cellX},${cellZ}`, () => computeStructureLayout(cellX, cellZ, settings, seed, cache))
+}
+
+function computeStructureLayout(cellX, cellZ, settings, seed, cache) {
   const shaderSeed = gpuMultiply(seed, WORLD_SEED_SCALE)
   const presence = Math.min(0.82, 0.1 + settings.generation.structures * 0.68 + settings.generation.mechanicalIntensity * 0.16 + settings.generation.ritualIntensity * 0.12)
   const randomX = gpuAdd(cellX, gpuMultiply(shaderSeed, 0.043))
@@ -414,6 +420,7 @@ export function structureLayout(cellX, cellZ, settings, seed) {
   return {
     cellX,
     cellZ,
+    mazeRecipe: settings.maze || mazeRecipe([], seed),
     centerX,
     centerZ,
     ground,

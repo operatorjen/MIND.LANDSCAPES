@@ -1,4 +1,23 @@
 export const lightingGlsl = `
+  vec2 landscapePigmentFlow(vec3 position) {
+    vec2 folded = foldedPoint(position.xz);
+    float drift = sin(folded.y * 0.018 + uSeed * 0.37) * 1.35;
+    float dunePhase = folded.x * 0.42 + sin(folded.y * 0.06) * 2.4;
+    float duneTone = 0.5 + 0.5 * sin(dunePhase + drift * 0.42 - 0.65);
+    float hillPhase = (folded.x * 0.038 + folded.y * 0.021) * uTerrainScale;
+    float hillTone = 0.5 + 0.5 * sin(hillPhase + drift + position.y * 0.11);
+    return smoothstep(vec2(0.0), vec2(1.0), vec2(duneTone, hillTone));
+  }
+
+  vec3 dreamMeadowPigment(vec3 position) {
+    float tone = landscapePigmentFlow(position).y;
+    vec3 deep = vec3(0.075, 0.19, 0.20);
+    vec3 middle = vec3(0.29, 0.43, 0.32);
+    vec3 pale = vec3(0.66, 0.73, 0.49);
+    vec3 pigment = mix(deep, middle, smoothstep(0.0, 0.58, tone));
+    pigment = mix(pigment, pale, smoothstep(0.42, 1.0, tone));
+    return mix(pigment, pigment * 0.82 + uSkyColor * 0.18, 0.16);
+  }
   vec3 shadeScene(vec3 direction, vec3 position, float distanceFromCamera, float material) {
     vec3 normal = sceneNormal(position, distanceFromCamera, material);
     vec3 lightDirection = sunDirection();
@@ -47,8 +66,14 @@ export const lightingGlsl = `
 
       float sandGrain = noise21(position.xz * 5.8 + uSeed * 0.7);
       float windLines = 0.5 + 0.5 * sin(biomePoint.x * 0.82 + sin(biomePoint.y * 0.12) * 2.2);
-      vec3 paleSand = mix(vec3(0.63, 0.53, 0.37), uAccentColor * 0.68, 0.2);
-      vec3 duneSand = mix(paleSand * 0.7, paleSand * 1.18, windLines * 0.58 + sandGrain * 0.18);
+      float duneTone = landscapePigmentFlow(position).x;
+      vec3 lavenderSand = vec3(0.24, 0.19, 0.32);
+      vec3 roseSand = vec3(0.62, 0.39, 0.39);
+      vec3 champagneSand = vec3(0.88, 0.73, 0.51);
+      vec3 duneSand = mix(lavenderSand, roseSand, smoothstep(0.0, 0.58, duneTone));
+      duneSand = mix(duneSand, champagneSand, smoothstep(0.42, 1.0, duneTone));
+      duneSand = mix(duneSand, duneSand * 0.82 + uAccentColor * 0.18, 0.16);
+      duneSand *= 0.94 + windLines * 0.07 + sandGrain * 0.05;
       surface = mix(surface, duneSand, duneBiome * (1.0 - rockBiome * 0.45));
 
       float rockGrain = fbm(position.xz * 0.21 + position.y * 0.05 + uSeed * 0.31);
@@ -73,8 +98,16 @@ export const lightingGlsl = `
       );
       vec3 meadowColor = mix(uGroundColor * 0.48, grassSample.color, 0.72);
       surface = mix(surface, meadowColor * (0.78 + grassSample.fiber * 0.32), grassSample.coverage);
+      float hillWash = meadowBiome * (1.0 - duneBiome) * (1.0 - rockBiome)
+        * (1.0 - river) * (1.0 - wetBank * 0.7);
+      vec3 hillPigment = dreamMeadowPigment(position);
+      surface = mix(surface, hillPigment * (0.92 + grassSample.fiber * 0.12), hillWash * 0.74);
       float pigmentBand = 0.5 + 0.5 * sin(position.y * 1.7 + pattern * 6.0);
       surface = mix(surface, mix(uAccentColor, uSkyColor, pigmentBand), clamp(uPsychedelicIntensity * 0.34, 0.0, 0.62));
+      if (dryStructureInterior(position)) {
+        float stoneGrain = noise21(position.xz * 2.7 + uSeed);
+        surface = mix(vec3(0.27, 0.29, 0.28), vec3(0.43, 0.435, 0.41), stoneGrain * 0.45 + 0.25);
+      }
     } else if (material < MATERIAL_BARK_MAX) {
       float spacing = TREE_CELL;
       vec2 treeCell = floor((position.xz + spacing * 0.5) / spacing);
@@ -158,8 +191,15 @@ export const lightingGlsl = `
       surface = mix(surface, uAccentColor.gbr * 0.58, clamp(uPsychedelicIntensity * 0.16, 0.0, 0.32));
     } else if (material < MATERIAL_GRASS_MAX) {
       surface = meadowGrassBladeColor(position, season);
+      surface = mix(surface, dreamMeadowPigment(position), 0.62);
       surface = mix(surface, uAccentColor * 0.48 + surface * 0.62, clamp(uPsychedelicIntensity * 0.12, 0.0, 0.24));
     } else if (material < MATERIAL_CONCRETE_MAX) {
+      SunlitOvergrowthSample overgrowth = sampleSunlitOvergrowth(
+        position,
+        normal,
+        surfaceDetail,
+        concreteSample.weathering
+      );
       float panelJoint = smoothstep(0.46, 0.5, abs(fract(position.y * 0.38 + concreteSample.weathering * 0.08) - 0.5));
       float runoff = smoothstep(0.56, 0.86, concreteSample.weathering) * smoothstep(0.15, 0.85, concreteSample.weathering);
       vec3 dryConcrete = vec3(0.43, 0.435, 0.42);
@@ -170,6 +210,12 @@ export const lightingGlsl = `
       surface = mix(surface, paleAggregate, concreteSample.aggregate * 0.34);
       surface *= 1.0 - concreteSample.pores * 0.48 - panelJoint * 0.14;
       surface = mix(surface, uGroundColor * 0.36, 0.16);
+      vec3 shadedMoss = mix(vec3(0.045, 0.105, 0.035), vec3(0.19, 0.31, 0.09), overgrowth.pattern);
+      shadedMoss = mix(shadedMoss, uGroundColor * 0.32 + shadedMoss * 0.72, 0.2);
+      vec3 vineGreen = mix(vec3(0.055, 0.16, 0.045), vec3(0.31, 0.47, 0.12), overgrowth.pattern);
+      surface = mix(surface, shadedMoss, clamp(overgrowth.moss * 0.76, 0.0, 0.82));
+      surface = mix(surface, vineGreen, clamp(overgrowth.vines * 0.94, 0.0, 0.96));
+      surface += vineGreen * overgrowth.vines * (0.035 + diffuse * 0.045);
     } else if (material < MATERIAL_MARBLE_MAX) {
       float marbleFlow = fbm(vec2(position.x * 0.17 + position.y * 0.055, position.z * 0.14 - position.y * 0.038) + uSeed * 0.3);
       float veins = smoothstep(0.035, 0.0, abs(marbleFlow - 0.52 + sin(position.y * 0.18) * 0.035)) * mix(0.24, 1.0, surfaceDetail);
@@ -248,11 +294,36 @@ export const lightingGlsl = `
       surface *= 1.0 - panelSeam * 0.38;
       surface += vec3(0.42, 0.48, 0.28) * fluorescent * (0.18 + abs(normal.y) * 0.32);
     } else {
-      float portalPulse = 0.86 + 0.14 * sin(uTime * uMotionScale * 1.8 + position.y * 2.4);
-      float portalGrain = 0.5 + 0.5 * sin(position.x * 8.4 + position.y * 11.2 + position.z * 5.7);
-      surface = mix(vec3(0.08, 0.48, 0.62), vec3(0.62, 0.92, 0.76), portalGrain * 0.28 + 0.46) * portalPulse;
+      float portalTime = uTime * uMotionScale;
+      float breath = sin(portalTime * 1.22) * 0.72 + sin(portalTime * 2.44 - 1.1) * 0.2;
+      vec3 spinningNormal = normal;
+      spinningNormal.xz = rotate2(portalTime * 0.22) * spinningNormal.xz;
+      spinningNormal.xy = rotate2(-portalTime * 0.13) * spinningNormal.xy;
+      float crawl = fbm(spinningNormal.xy * 3.8 + vec2(spinningNormal.z * 1.45, -portalTime * 0.12));
+      float membrane = sin(spinningNormal.y * 12.0 - spinningNormal.x * 5.0 + crawl * 5.2);
+      membrane += sin((spinningNormal.x - spinningNormal.z) * 15.0 + portalTime * 0.24) * 0.55;
+      float veins = smoothstep(0.72, 0.97, 0.5 + 0.5 * sin(membrane * 2.4 + crawl * 8.0));
+      float eye = pow(max(dot(normal, -direction), 0.0), 2.6);
+      float rim = pow(1.0 - max(dot(normal, -direction), 0.0), 1.7);
+      float liquidBand = 0.5 + 0.5 * sin(membrane * 1.7 + crawl * 9.0 + portalTime * 0.62);
+      float oilShift = smoothstep(0.18, 0.86, liquidBand + rim * 0.28);
+      vec3 voidGreen = vec3(0.004, 0.07, 0.018);
+      vec3 neonGreen = vec3(0.06, 1.42, 0.22);
+      vec3 hotCore = vec3(0.62, 1.7, 0.14);
+      vec3 liquidBlue = vec3(0.04, 0.34, 1.5);
+      vec3 oilPink = vec3(1.35, 0.08, 0.74);
+      vec3 iridescence = mix(liquidBlue, oilPink, oilShift);
+      surface = mix(voidGreen, neonGreen, clamp(0.3 + crawl * 0.76 + membrane * 0.065, 0.0, 1.0));
+      surface = mix(surface, hotCore, veins * (0.16 + eye * 0.24));
+      surface = mix(surface, iridescence, (0.1 + rim * 0.32) * smoothstep(0.28, 0.9, liquidBand));
+      surface += neonGreen * rim * (0.9 + 0.28 * sin(portalTime * 2.3 + crawl * 6.0));
+      surface += iridescence * veins * 0.18;
+      surface *= 0.9 + breath * 0.28;
     }
 
+    if (material > MATERIAL_LIMINAL_MAX) return surface * 2.65;
+
+    surface = personalArt(surface, position, normal, material);
     float ambientDay = smoothstep(0.12, 0.62, daylight);
     float ambient = max(0.09, (0.24 + normal.y * 0.34 - uLightDrama * 0.07) * mix(0.34, 1.0, ambientDay));
     vec3 lightColor = mix(vec3(0.72, 0.78, 0.8), vec3(1.08, 0.68, 0.3), clamp(0.32 + uWarmth * 0.3 + goldenHour() * 0.68, 0.0, 1.0));
@@ -278,27 +349,41 @@ export const lightingGlsl = `
     return mix(surface, aerialHazeColor(direction), fog);
   }
 
+  vec2 waterSurfaceGradient(vec2 point, float eyeDistance) {
+    float time = uTime * uMotionScale;
+    float detail = 1.0 - smoothstep(8.0, 52.0 * uDetailScale, eyeDistance);
+    float micro = 1.0 - smoothstep(2.5, 17.0 * uDetailScale, eyeDistance);
+    vec2 a = normalize(vec2(0.92, 0.38));
+    vec2 b = normalize(vec2(-0.34, 0.94));
+    float wind = 0.65 + uWind * 0.45;
+    vec2 gradient = a * cos(dot(point, a) * 0.19 + time * 0.28 * wind) * 0.038;
+    gradient += b * cos(dot(point, b) * 0.31 - time * 0.37 * wind) * 0.026;
+    gradient *= mix(0.48, 1.0, detail);
+    if (detail > 0.002) {
+      vec2 c = normalize(vec2(0.68, -0.73));
+      float drift = sin(dot(point, b) * 0.23 + time * 0.14) * 0.65;
+      gradient += a * cos(dot(point, a) * 1.65 + drift + time * 0.94 * wind) * 0.115 * detail;
+      gradient += b * cos(dot(point, b) * 2.7 - time * 1.18 * wind) * 0.082 * detail;
+      gradient += c * cos(dot(point, c) * 4.4 + drift - time * 1.47 * wind) * 0.045 * detail;
+      if (micro > 0.002) {
+        gradient += c * cos(dot(point, c) * 10.2 + time * 2.1 * wind) * 0.028 * micro;
+        #if SHADER_QUALITY_LEVEL > 0
+        gradient += b * cos(dot(point, b) * 17.3 - time * 2.7 * wind) * 0.017 * micro;
+        #endif
+      }
+    }
+    return gradient;
+  }
+
   vec3 shadeWater(vec3 origin, vec3 direction, float distanceFromCamera) {
     vec3 position = origin + direction * distanceFromCamera;
-    float waterDetail = proximityDetail(position.xz, 10.0, 82.0);
-    float rippleTime = uTime * uMotionScale;
-    vec2 directionA = normalize(vec2(0.92, 0.38));
-    vec2 directionB = normalize(vec2(-0.34, 0.94));
-    vec2 directionC = normalize(vec2(0.68, -0.73));
-    float phaseA = dot(position.xz, directionA) * 0.72 + rippleTime * (0.24 + uWind * 0.22);
-    float phaseB = dot(position.xz, directionB) * 1.18 - rippleTime * (0.31 + uWind * 0.18);
-    float phaseC = dot(position.xz, directionC) * 2.85 + rippleTime * (0.42 + uWind * 0.2);
-    vec2 gradient = directionA * cos(phaseA) * 0.086;
-    gradient += directionB * cos(phaseB) * 0.061;
-    gradient += directionC * cos(phaseC) * 0.026 * waterDetail;
-    if (waterDetail > 0.002) {
-      float wandering = noise21(position.xz * 0.16 + vec2(rippleTime * 0.018, -rippleTime * 0.014)) - 0.5;
-      float capillary = sin(position.x * 8.2 - position.z * 6.7 + rippleTime * 0.7) * 0.008;
-      gradient += (vec2(wandering, -wandering) * 0.035 + vec2(capillary, -capillary * 0.7)) * waterDetail;
-    }
+    float waterDetail = 1.0 - smoothstep(10.0, 82.0 * uDetailScale, distanceFromCamera);
+    float rippleDetail = 1.0 - smoothstep(8.0, 52.0 * uDetailScale, distanceFromCamera);
+    float microDetail = 1.0 - smoothstep(2.5, 17.0 * uDetailScale, distanceFromCamera);
+    vec2 gradient = waterSurfaceGradient(position.xz, distanceFromCamera);
     vec3 normal = normalize(vec3(-gradient.x, 1.0, -gradient.y));
     vec3 reflected = reflect(direction, normal);
-    float fresnel = pow(1.0 - max(dot(-direction, normal), 0.0), 3.0);
+    float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(-direction, normal), 0.0), 5.0);
 
     vec3 reflectionColor = skyColor(reflected);
     #if ENABLE_SCENE_REFLECTIONS == 1
@@ -314,12 +399,12 @@ export const lightingGlsl = `
     #endif
 
     vec3 deep = mix(uGroundColor * vec3(0.16, 0.25, 0.28), uAccentColor * 0.28, clamp(uPsychedelicIntensity * 0.22, 0.0, 0.4));
-    float rippleLight = 0.5 + 0.5 * sin(phaseA + phaseB * 0.72 + phaseC * 0.18);
-    deep *= 0.86 + rippleLight * 0.12;
-    vec3 color = mix(deep, reflectionColor, 0.43 + fresnel * 0.5);
-    float highlight = pow(max(dot(reflected, sunDirection()), 0.0), 86.0);
+    float rippleLight = clamp(0.5 + (gradient.x + gradient.y) * 1.6, 0.0, 1.0);
+    deep *= 0.92 + (rippleLight - 0.5) * 0.16 * rippleDetail;
+    vec3 color = mix(deep, reflectionColor, 0.24 + fresnel * 0.72);
+    float highlight = pow(max(dot(reflected, sunDirection()), 0.0), mix(46.0, 110.0, rippleDetail));
     float glint = pow(max(dot(reflected, sunDirection()), 0.0), 280.0) * (0.45 + rippleLight * 0.55);
-    color += (highlight * 1.55 + glint * 3.2) * vec3(1.0, 0.79, 0.5);
+    color += (highlight * 1.55 + glint * 3.2 * microDetail) * vec3(1.0, 0.79, 0.5);
     float fog = aerialPerspective(distanceFromCamera);
     return mix(color, aerialHazeColor(direction), fog);
   }

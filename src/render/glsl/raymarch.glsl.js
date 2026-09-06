@@ -1,5 +1,5 @@
 export const raymarchGlsl = `
-  float marchScene(vec3 origin, vec3 direction, out vec3 position, out float material) {
+  float marchScene(vec3 origin, vec3 direction, float waterDistance, out vec3 position, out float material) {
     float distanceFromCamera = 0.08;
     float previousDistanceFromCamera = distanceFromCamera;
     float previousDistanceToSurface = 1000.0;
@@ -20,6 +20,8 @@ export const raymarchGlsl = `
         }
         return distanceFromCamera;
       }
+
+      if (waterDistance > 0.0 && distanceFromCamera >= waterDistance) break;
 
       float terrainAdvance = max(componentDistances.x, 0.0) * 0.72 / max(abs(direction.y), 0.2);
       float treeAdvance = max(componentDistances.y, 0.0) * TREE_MARCH_SCALE;

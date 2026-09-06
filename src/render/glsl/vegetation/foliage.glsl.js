@@ -41,14 +41,15 @@ export const foliageGeometryGlsl = `  float leafLobeClusterDistance(
     float trunkCurve,
     float detail
   ) {
-    if (species >= 0.88) return 1000.0;
+    float foliageGrowth = smoothstep(0.18, 0.78, detail);
+    if (foliageGrowth < 0.002 || species >= 0.88) return 1000.0;
     float season = seasonalCycle();
     float leaffulness = smoothstep(0.08, 0.34, season) * (1.0 - smoothstep(0.88, 1.0, season));
-    float leafScale = mix(0.38, 1.0, leaffulness);
+    float leafScale = mix(0.38, 1.0, leaffulness) * foliageGrowth;
     float foliage = 1000.0;
 
     if (species < 0.24) {
-      leafScale = mix(0.8, 1.0, leaffulness);
+      leafScale = mix(0.8, 1.0, leaffulness) * foliageGrowth;
       vec3 lower = trunkGrowthPoint(0.44, height, lean, leanAmount, solarBias, solarLean, solarCross, trunkCurve);
       vec3 middle = trunkGrowthPoint(0.61, height, lean, leanAmount, solarBias, solarLean, solarCross, trunkCurve);
       vec3 high = trunkGrowthPoint(0.77, height, lean, leanAmount, solarBias, solarLean, solarCross, trunkCurve);
@@ -76,6 +77,10 @@ export const foliageGeometryGlsl = `  float leafLobeClusterDistance(
     branchOne.xz = containedGrowth(branchOne.xz, 2.85);
     branchTwo.xz = containedGrowth(branchTwo.xz, 3.0);
     branchThree.xz = containedGrowth(branchThree.xz, 2.9);
+    float primaryGrowth = smoothstep(0.0, 0.46, detail);
+    branchOne = mix(trunkGrowthPoint(0.35, height, lean, leanAmount, solarBias, solarLean, solarCross, trunkCurve), branchOne, primaryGrowth);
+    branchTwo = mix(trunkGrowthPoint(0.52, height, lean, leanAmount, solarBias, solarLean, solarCross, trunkCurve), branchTwo, primaryGrowth);
+    branchThree = mix(trunkGrowthPoint(0.67, height, lean, leanAmount, solarBias, solarLean, solarCross, trunkCurve), branchThree, primaryGrowth);
     vec3 firstScale = species < 0.5 ? vec3(1.32, 0.5, 0.88) : vec3(1.28, 0.76, 1.08);
     vec3 secondScale = species < 0.5 ? vec3(1.06, 0.48, 0.82) : vec3(1.12, 0.7, 1.18);
     foliage = leafLobeClusterDistance(point, branchOne, firstScale * age * leafScale, random * 9.0, detail);
