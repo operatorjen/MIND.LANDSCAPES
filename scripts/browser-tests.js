@@ -2,10 +2,11 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn } from 'node:child_process'
+import { screenshotViews } from '../test/browser/screenshot-views.js'
 
 const PORT = Number(process.env.BROWSER_TEST_PORT || 8127)
 const ROOT = new URL('../', import.meta.url)
-const RESULT_TIMEOUT = 90000
+const RESULT_TIMEOUT = Number(process.env.BROWSER_TEST_TIMEOUT || 90000)
 const CHROME_PATHS = [
   process.env.CHROME_PATH,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -25,7 +26,90 @@ try {
   await waitForServer()
   const chrome = await findChrome()
   chromeSession = await launchChrome(chrome)
-  if (process.argv.includes('--water-only')) {
+  if (process.argv.includes('--performance-compare')) {
+    await runHarness('', '/test/browser/screenshot-harness.html')
+    const measured = await chromeSession.send('Runtime.evaluate', {
+      expression: "import('/test/browser/performance-comparison.js').then(module => module.comparePerformance())",
+      awaitPromise: true, returnByValue: true
+    }, RESULT_TIMEOUT)
+    if (measured.result?.exceptionDetails) throw new Error(JSON.stringify(measured.result.exceptionDetails))
+    const result = measured.result?.result?.value
+    if (!result) throw new Error(JSON.stringify(measured.result))
+    console.log(JSON.stringify(result, null, 2))
+    if (!result.passed) process.exitCode = 1
+  } else if (process.argv.includes('--performance')) {
+    await runHarness('', '/test/browser/screenshot-harness.html')
+    const results = []
+    for (const variant of (process.argv.includes('--current-only') ? ['current'] : ['current', 'noOutdoorWater', 'withOutdoorReflections', 'noCourtyardReflections', 'noPlasterBump'])) {
+      for (const kind of ['exterior', 'courtyard', 'hallway']) {
+        const measured = await chromeSession.send('Runtime.evaluate', {
+          expression: `(async () => {
+            const { landscape, renderer } = window.studio;
+            window.performanceOriginalShader ||= landscape.mesh.material.fragmentShader;
+            let shader = window.performanceOriginalShader;
+            const variant = ${JSON.stringify(variant)};
+            if (variant === 'noOutdoorWater') shader = shader.replace('float waterDistance = outdoorWaterDistance(origin, direction);', 'float waterDistance = -1.0;');
+            if (variant === 'withOutdoorReflections') shader = shader.replace('#define ENABLE_SCENE_REFLECTIONS 0', '#define ENABLE_SCENE_REFLECTIONS 1');
+            if (variant === 'noCourtyardReflections') shader = shader.replace('i < 40', 'i < 0');
+            if (variant === 'noPlasterBump') shader = shader.replace('normal = courtyardPlasterNormal(position, normal, surfaceDetail)', 'normal = normal');
+            if (landscape.mesh.material.fragmentShader !== shader) {
+              landscape.mesh.material.fragmentShader = shader;
+              landscape.mesh.material.needsUpdate = true;
+            }
+            const options = {kind: ${JSON.stringify(kind)}, width: 64, height: 40, phase: 3.7};
+            window.renderShot(options);
+            const samples = [];
+            for (let i = 0; i < 3; i++) {
+              const start = performance.now();
+              window.renderShot(options);
+              samples.push(performance.now() - start);
+            }
+            samples.sort((a,b) => a-b);
+            const gl = renderer.getContext();
+            if (gl.isContextLost()) throw new Error('WebGL context lost');
+            return {variant, kind: options.kind, medianMs: samples[1], samples, errors: window.studio.errors};
+          })()`, awaitPromise: true, returnByValue: true
+        }, RESULT_TIMEOUT)
+        if (measured.result?.exceptionDetails) throw new Error(JSON.stringify(measured.result.exceptionDetails))
+        const result = measured.result?.result?.value
+        if (!result || result.errors.length) throw new Error(JSON.stringify(measured.result))
+        results.push(result)
+        console.log(JSON.stringify(result))
+        if (variant === 'current' && process.argv.includes('--capture')) {
+          const capture = await chromeSession.send('Runtime.evaluate', {
+            expression: `window.renderShot({kind: ${JSON.stringify(kind)}, width:320, height:208, phase:3.7}); document.querySelector('canvas').toDataURL('image/png')`, returnByValue: true
+          }, RESULT_TIMEOUT)
+          if (capture.result?.exceptionDetails) throw new Error(JSON.stringify(capture.result.exceptionDetails))
+          writeFileSync(`/tmp/landscapes-performance-${kind}.png`, Buffer.from(capture.result.result.value.split(',')[1], 'base64'))
+        }
+      }
+    }
+    console.log(JSON.stringify({results, width:64, height:40}))
+  } else if (process.argv.includes('--screenshots')) {
+    await runHarness('', '/test/browser/screenshot-harness.html')
+    for (const view of screenshotViews) {
+      const rendered = await chromeSession.send('Runtime.evaluate', {
+        expression: `window.renderShot(${JSON.stringify(view)})`, returnByValue: true
+      }, RESULT_TIMEOUT)
+      const result = rendered.result?.result?.value
+      if (rendered.result?.exceptionDetails || !result || result.errors.length) throw new Error(JSON.stringify(rendered.result))
+      const capture = await chromeSession.send('Runtime.evaluate', {
+        expression: 'document.querySelector("canvas").toDataURL("image/png")', returnByValue: true
+      }, RESULT_TIMEOUT)
+      writeFileSync(new URL(`../screenshots/${view.name}`, import.meta.url), Buffer.from(capture.result.result.value.split(',')[1], 'base64'))
+      console.log(JSON.stringify({ name: view.name, ...result }))
+    }
+  } else if (process.argv.includes('--visual-only')) {
+    const result = await runHarness('?level=low&visual=1')
+    console.log(JSON.stringify(result, null, 2))
+    if (!result.passed) process.exitCode = 1
+  } else if (process.argv.includes('--flowers-only')) {
+    const result = await runHarness('', '/test/browser/flowers-harness.html')
+    const screenshot = await chromeSession.send('Page.captureScreenshot', { format: 'png' }, 60000)
+    writeFileSync('/tmp/landscape-flowers-preview.png', Buffer.from(screenshot.result.data, 'base64'))
+    console.log(JSON.stringify(result, null, 2))
+    if (!result.passed) process.exitCode = 1
+  } else if (process.argv.includes('--water-only')) {
     const result = await runHarness('', '/test/browser/water-harness.html')
     const screenshot = await chromeSession.send('Page.captureScreenshot', { format: 'png' }, 60000)
     writeFileSync('/tmp/landscape-water-preview.png', Buffer.from(screenshot.result.data, 'base64'))
@@ -41,8 +125,15 @@ try {
     writeFileSync('/tmp/landscape-art-preview.png', Buffer.from(screenshot.result.data, 'base64'))
     console.log(JSON.stringify(art, null, 2))
     if (!art.passed) process.exitCode = 1
+  } else if (process.argv.includes('--maze-check')) {
+    const result = await runHarness('', '/test/browser/maze-harness.html')
+    console.log(JSON.stringify(result, null, 2))
+    if (!result.passed) process.exitCode = 1
   } else if (process.argv.includes('--maze-only')) {
-    const maze = await runHarness('?preview', '/test/browser/maze-harness.html')
+    const preview = process.argv.includes('--courtyard')
+      ? `?preview&courtyard${process.argv.includes('--sky') ? '&sky' : ''}${process.argv.includes('--night') ? '&night' : ''}`
+      : '?preview'
+    const maze = await runHarness(preview, '/test/browser/maze-harness.html')
     const screenshot = await chromeSession.send('Page.captureScreenshot', { format: 'png' }, 60000)
     writeFileSync('/tmp/landscape-maze-preview.png', Buffer.from(screenshot.result.data, 'base64'))
     console.log(JSON.stringify({ ...maze, preview: '/tmp/landscape-maze-preview.png' }, null, 2))
@@ -122,7 +213,7 @@ async function launchChrome(chrome) {
     '--disable-sync',
     '--disable-gpu-sandbox',
     '--use-gl=angle',
-    '--use-angle=swiftshader',
+    `--use-angle=${process.env.BROWSER_TEST_ANGLE || 'swiftshader'}`,
     '--enable-unsafe-swiftshader',
     '--enable-webgl',
     '--ignore-gpu-blocklist',

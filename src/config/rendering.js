@@ -41,6 +41,8 @@ export const AUTO_QUALITY = {
   initialLevel: 1,
   warmupSeconds: 3,
   sampleFrames: 90,
+  sampleSeconds: 1.5,
+  minimumSamples: 8,
   desktopFps: 60,
   xrFps: 72,
   slowFrameRatio: 1.08,
@@ -51,13 +53,13 @@ export const AUTO_QUALITY = {
   demotedScale: 0.9,
   promotedScale: 0.82,
   cooldownSeconds: 3,
-  ignoredFrameSeconds: 0.2
+  maximumSampleSeconds: 0.2
 }
 
 export const SHADER_VARIANTS = Object.freeze({
   low: Object.freeze({ qualityLevel: 0, sceneSteps: QUALITY_PROFILES.low.raySteps, reflectionSteps: 1, sceneReflections: false }),
-  medium: Object.freeze({ qualityLevel: 1, sceneSteps: QUALITY_PROFILES.medium.raySteps, reflectionSteps: 18, sceneReflections: true }),
-  high: Object.freeze({ qualityLevel: 2, sceneSteps: QUALITY_PROFILES.high.raySteps, reflectionSteps: 30, sceneReflections: true })
+  medium: Object.freeze({ qualityLevel: 1, sceneSteps: QUALITY_PROFILES.medium.raySteps, reflectionSteps: 18, sceneReflections: false }),
+  high: Object.freeze({ qualityLevel: 2, sceneSteps: QUALITY_PROFILES.high.raySteps, reflectionSteps: 30, sceneReflections: false })
 })
 
 export const SKY_VOLUME_SIZE = 12

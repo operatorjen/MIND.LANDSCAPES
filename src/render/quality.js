@@ -55,14 +55,17 @@ export class QualityController {
   }
 
   sample(delta, isXR) {
-    if (this.preferences.mode !== 'auto' || delta <= 0 || delta >= AUTO.ignoredFrameSeconds) return
+    if (this.preferences.mode !== 'auto' || !Number.isFinite(delta) || delta <= 0) return
+    if (globalThis.document?.hidden) return
+    delta = Math.min(delta, AUTO.maximumSampleSeconds)
     this.warmup = Math.max(0, this.warmup - delta)
     if (this.warmup > 0) return
     this.cooldown = Math.max(0, this.cooldown - delta)
     if (this.cooldown > 0) return
     this.sampleTotal += delta * MILLISECONDS_PER_SECOND
     this.sampleCount++
-    if (this.sampleCount < AUTO.sampleFrames) return
+    if (this.sampleCount < AUTO.minimumSamples) return
+    if (this.sampleCount < AUTO.sampleFrames && this.sampleTotal < AUTO.sampleSeconds * MILLISECONDS_PER_SECOND) return
 
     const average = this.sampleTotal / this.sampleCount
     const target = MILLISECONDS_PER_SECOND / (isXR ? AUTO.xrFps : AUTO.desktopFps)

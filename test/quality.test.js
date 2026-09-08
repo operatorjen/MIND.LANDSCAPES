@@ -33,3 +33,26 @@ test('shader variants increase compile-time work with quality', () => {
     }
   }
 })
+
+test('automatic quality responds to sustained slow frames and ignores invalid samples', async () => {
+  const { QualityController } = await import('../src/render/quality.js')
+  const previousWindow = globalThis.window
+  globalThis.window = { matchMedia: () => ({ matches: false }) }
+  try {
+    const controller = new QualityController()
+    controller.warmup = 0
+    const initial = controller.profile.pixelRatio
+    for (const delta of [NaN, Infinity, -1, 0]) controller.sample(delta, false)
+    assert.equal(controller.sampleCount, 0)
+    controller.sample(2, false)
+    assert.equal(controller.profile.pixelRatio, initial)
+    for (let i = 0; i < 8; i++) controller.sample(0.3, false)
+    assert.ok(controller.profile.pixelRatio < initial)
+    controller.setMode('high')
+    for (let i = 0; i < 100; i++) controller.sample(0.3, false)
+    assert.equal(controller.profile.pixelRatio, QUALITY_PROFILES.high.pixelRatio)
+  } finally {
+    if (previousWindow === undefined) delete globalThis.window
+    else globalThis.window = previousWindow
+  }
+})

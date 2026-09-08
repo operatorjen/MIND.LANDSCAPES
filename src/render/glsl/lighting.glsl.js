@@ -20,6 +20,7 @@ export const lightingGlsl = `
   }
   vec3 shadeScene(vec3 direction, vec3 position, float distanceFromCamera, float material) {
     vec3 normal = sceneNormal(position, distanceFromCamera, material);
+    vec3 geometricNormal = normal;
     vec3 lightDirection = sunDirection();
     float daylight = daylightAmount();
     float season = seasonalCycle();
@@ -27,13 +28,16 @@ export const lightingGlsl = `
     float microDetail = proximityDetail(position.xz, 3.0, 18.0);
     BarkContourSample barkSample;
     ConcreteAggregateSample concreteSample;
+    float courtyardPlaster = courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE);
     if (material > MATERIAL_TERRAIN_MAX && material < MATERIAL_BARK_MAX) {
       normal = barkContourNormal(position, normal, surfaceDetail, microDetail, barkSample);
     }
     if (material >= MATERIAL_CONCRETE && material < MATERIAL_CONCRETE_MAX) {
-      normal = concreteAggregateNormal(position, normal, surfaceDetail, microDetail, concreteSample);
+      if (courtyardPlaster > 0.5) normal = courtyardPlasterNormal(position, normal, surfaceDetail);
+      else normal = concreteAggregateNormal(position, normal, surfaceDetail, microDetail, concreteSample);
     }
-    if (material > MATERIAL_BARK_MAX && material < MATERIAL_FOLIAGE_DETAIL_MAX && surfaceDetail > 0.002) {
+    if (((material > MATERIAL_BARK_MAX && material < MATERIAL_FOLIAGE_DETAIL_MAX)
+      || courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE) > 0.5) && surfaceDetail > 0.002) {
       float leafRipple = sin(position.x * 17.0 + position.y * 11.0 + uSeed) * sin(position.z * 19.0 - position.y * 7.0);
       vec3 leafGrain = vec3(
         sin(position.y * 23.0 + position.z * 8.0),
@@ -42,10 +46,17 @@ export const lightingGlsl = `
       );
       normal = normalize(normal + leafGrain * leafRipple * surfaceDetail * 0.075);
     }
+    normal = petalMicroNormal(position, normal, material);
     float diffuse = pow(max(dot(normal, lightDirection), 0.0), 1.0 + uLightDrama * 1.35);
     vec3 surface;
 
-    if (material < MATERIAL_TERRAIN_MAX) {
+    if (courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE) > 0.5) {
+      surface = courtyardFoliageColor(position, normal);
+    } else if (courtyardMaterialMatch(material, MATERIAL_COURTYARD_SOIL) > 0.5) {
+      surface = courtyardSoilColor(position);
+    } else if (courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE) > 0.5) {
+      surface = courtyardStoneColor(position, geometricNormal);
+    } else if (material < MATERIAL_TERRAIN_MAX) {
       float slope = 1.0 - normal.y;
       vec2 biomePoint = foldedPoint(position.xz);
       float macroBiome = fbm(biomePoint * 0.011 + uSeed * 0.19);
@@ -190,9 +201,7 @@ export const lightingGlsl = `
       surface += ribs * vec3(0.17, 0.28, 0.08) * (0.32 + uChromaticIntensity * 0.14);
       surface = mix(surface, uAccentColor.gbr * 0.58, clamp(uPsychedelicIntensity * 0.16, 0.0, 0.32));
     } else if (material < MATERIAL_GRASS_MAX) {
-      surface = meadowGrassBladeColor(position, season);
-      surface = mix(surface, dreamMeadowPigment(position), 0.62);
-      surface = mix(surface, uAccentColor * 0.48 + surface * 0.62, clamp(uPsychedelicIntensity * 0.12, 0.0, 0.24));
+      surface = surrealFlowerColor(position, normal, material);
     } else if (material < MATERIAL_CONCRETE_MAX) {
       SunlitOvergrowthSample overgrowth = sampleSunlitOvergrowth(
         position,
@@ -321,16 +330,41 @@ export const lightingGlsl = `
       surface *= 0.9 + breath * 0.28;
     }
 
+    if (courtyardMaterialMatch(material, MATERIAL_COURTYARD_EXIT) > 0.5) return vec3(0.95, 0.79, 0.55) * 1.35;
     if (material > MATERIAL_LIMINAL_MAX) return surface * 2.65;
 
-    surface = personalArt(surface, position, normal, material);
+    if (courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE) < 0.5
+      && courtyardMaterialMatch(material, MATERIAL_COURTYARD_SOIL) < 0.5
+      && courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE) < 0.5)
+      surface = personalArt(surface, position, normal, material);
     float ambientDay = smoothstep(0.12, 0.62, daylight);
     float ambient = max(0.09, (0.24 + normal.y * 0.34 - uLightDrama * 0.07) * mix(0.34, 1.0, ambientDay));
     vec3 lightColor = mix(vec3(0.72, 0.78, 0.8), vec3(1.08, 0.68, 0.3), clamp(0.32 + uWarmth * 0.3 + goldenHour() * 0.68, 0.0, 1.0));
+    lightColor = mix(lightColor, vec3(1.0, 0.94, 0.92), courtyardPlaster * 0.55);
     vec3 lighting = vec3(ambient) + diffuse * lightColor * (0.52 + daylight * 0.58) * (1.0 + uLightDrama * 0.48);
+    float courtyardLight = max(
+      courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE),
+      max(courtyardMaterialMatch(material, MATERIAL_COURTYARD_SOIL), courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE))
+    );
+    if ((material > MATERIAL_TERRAIN_MAX && material < MATERIAL_BARK_MAX
+      || material > MATERIAL_SUCCULENT_MAX && material < MATERIAL_GRASS_MAX)) {
+      vec2 buildingCell = floor((position.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+      courtyardLight = position.y < terrainFoundation(structureCenterForCell(buildingCell)) - 1.0 ? 1.0 : courtyardLight;
+    }
+    float courtyardDay = mix(0.06, 1.0, ambientDay);
+    float uplight = 0.72 + 0.28 * max(dot(normal, normalize(vec3(0.4, -0.5, 0.3))), 0.0);
+    lighting += courtyardLight * mix(vec3(0.64, 0.32, 0.12), vec3(0.38, 0.33, 0.31), courtyardPlaster) * uplight * courtyardDay;
+    lighting = mix(lighting, max(lighting, mix(vec3(0.72, 0.47, 0.25), vec3(0.58, 0.52, 0.50), courtyardPlaster) * courtyardDay), courtyardLight);
     bool polishedInterior = (material > MATERIAL_CONCRETE_MAX && material < MATERIAL_BRASS_MAX) || (material > MATERIAL_CAVE_MAX && material < MATERIAL_FLOODED_MAX);
     bool ornateInterior = material > MATERIAL_SAND_MAX && material < MATERIAL_ORNATE_MAX;
+    float lampHousing = 0.0, lampEmitter = 0.0;
+    vec3 lampLight = vec3(0.0);
+    if (courtyardLight > 0.5) lampLight = courtyardDownlights(position, lampHousing, lampEmitter);
+    surface = mix(surface, vec3(0.055, 0.065, 0.07), lampHousing);
+    lighting += lampLight;
     surface *= polishedInterior ? vec3(0.72) + lighting * 0.58 : lighting;
+    surface += courtyardLight * mix(vec3(0.075, 0.038, 0.012), vec3(0.025, 0.019, 0.018), courtyardPlaster) * courtyardDay;
+    surface += vec3(1.0, 0.72, 0.40) * lampEmitter * 3.0;
     if (polishedInterior || ornateInterior) {
       float gloss = material > MATERIAL_MARBLE_MAX && material < MATERIAL_BRASS_MAX ? 110.0 : (ornateInterior ? 58.0 : 72.0);
       float specular = pow(max(dot(reflect(-lightDirection, normal), -direction), 0.0), gloss);
@@ -343,10 +377,32 @@ export const lightingGlsl = `
     }
     if (material > MATERIAL_LIMINAL_MAX) surface += vec3(0.16, 0.82, 1.08) * (0.82 + 0.18 * sin(uTime * uMotionScale * 1.8));
     float rim = pow(1.0 - max(dot(normal, -direction), 0.0), 3.0);
-    surface += rim * mix(uSkyColor, uAccentColor, clamp(material * 0.2, 0.0, 1.0)) * (0.16 + uPsychedelicIntensity * 0.08);
+    surface += rim * mix(uSkyColor, uAccentColor, clamp(material * 0.2, 0.0, 1.0)) * (0.16 + uPsychedelicIntensity * 0.08) * (1.0 - courtyardPlaster);
     float fog = aerialPerspective(distanceFromCamera);
     fog *= 1.0 - smoothstep(cameraPosition.y + 8.0, cameraPosition.y + 15.0, position.y);
     return mix(surface, aerialHazeColor(direction), fog);
+  }
+
+  vec3 shadeCourtyardWater(vec3 origin, vec3 direction, float distanceFromCamera) {
+    vec3 surface = origin + direction * distanceFromCamera;
+    vec3 reflected = reflect(direction, vec3(0.0, 1.0, 0.0));
+    vec3 color = skyColor(reflected);
+    // A static plane with a bounded reflection march, including on Low.
+    float travel = 0.06;
+    for (int i = 0; i < 40; i++) {
+      vec3 hit = surface + vec3(0.0, 0.035, 0.0) + reflected * travel;
+      vec3 distances; float material;
+      float distance = sampleScene(hit, material, distances);
+      if (distance < 0.022 + travel * 0.0007) {
+        color = shadeScene(reflected, hit, travel, material);
+        break;
+      }
+      travel += clamp(distance * 0.68, 0.025, 2.5);
+      if (travel > 55.0) break;
+    }
+    float housing, emitter;
+    color += courtyardDownlights(surface, housing, emitter) * 0.16;
+    return mix(vec3(0.055, 0.075, 0.07), color, 0.96);
   }
 
   vec2 waterSurfaceGradient(vec2 point, float eyeDistance) {

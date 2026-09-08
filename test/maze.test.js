@@ -1,7 +1,7 @@
 import { PLAYER_RADIUS, MAZE_HALL_HALF_WIDTH, MAZE_ROOM_MIN_HALF_WIDTH } from '../src/config/navigation.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, portalArrival } from '../src/world/maze.js'
+import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, portalArrival, courtyardExitForLayout } from '../src/world/maze.js'
 import { structureLayout, terrainHeightAt, walkingSurfaceAt, isPositionBlocked, portalDestinationAt } from '../src/world/spatial-layout.js'
 import { deriveSettings, normalizeDocument, WorldState } from '../src/world/world-state.js'
 
@@ -24,11 +24,43 @@ test('maze recipes follow media identity and mood, and survive serialization', (
   assert.notEqual(a.seed, b.seed)
   assert.ok(b.turnBias > a.turnBias)
   assert.ok(b.rooms > a.rooms)
+  assert.ok(b.gardenLushness > a.gardenLushness)
+  assert.ok(b.gardenStyle >= 1 && b.gardenStyle <= 3)
   assert.ok(b.reach > a.reach)
   assert.deepEqual(mazeRecipe([calm, vivid], 0.5), mazeRecipe([vivid, calm], 0.5))
   const saved = normalizeDocument({ seed: 0.5, entries: [{ ...calm, contribution: { ...deriveSettings([]), generation: calm.contribution.generation } }] })
   assert.deepEqual(normalizeDocument(JSON.parse(JSON.stringify(saved))).maze, saved.maze)
   assert.ok(JSON.stringify(saved.maze).length < 300)
+})
+
+test('each building has at most one reachable courtyard away from its portal orbs', () => {
+  let courtyards = 0
+  let expandedCourtyards = 0
+  const styles = new Set()
+  for (let sample = 1; sample <= 80; sample++) {
+    const seed = sample / 81
+    const settings = settingsFor(seed)
+    const layout = structureLayout(sample % 9 - 4, Math.floor(sample / 9) - 4, settings, seed)
+    if (!layout) continue
+    const maze = mazeForLayout(layout)
+    const gardenNodes = maze.nodes.filter(node => node.courtyard)
+    assert.ok(gardenNodes.length <= 1)
+    assert.equal(gardenNodes.length, 1)
+    const garden = gardenNodes[0]
+    assert.equal(garden.portal, 0)
+    assert.notEqual(garden.id, maze.entry)
+    assert.ok(maze.paths[garden.id].length >= 3)
+    assert.ok([6, 9, 12].includes(maze.courtyardTiles.length))
+    if (maze.courtyardTiles.length === 12) expandedCourtyards++
+    assert.ok(maze.courtyardTiles.every(node => node.portal === 0 && node.courtyardTile > 0))
+    assert.deepEqual(maze.courtyardRoute, maze.paths[garden.id])
+    assert.ok(mazeDistance(garden, layout) < -0.46)
+    styles.add(garden.courtyard)
+    courtyards++
+  }
+  assert.ok(courtyards > 30)
+  assert.ok(expandedCourtyards > courtyards * 0.5)
+  assert.ok(styles.size >= 2)
 })
 
 test('every maze room and door is connected, traversable, and has collision clearance', () => {
@@ -126,7 +158,8 @@ test('cylinder clearance uses exposed corners rather than overlapping room seams
         assert.equal(isPositionBlocked(worldPoint(layout, point), settings, seed, 0.3), false)
         formerlyBlocked++
         const wall = { x: node.x + maze.stepX * 0.5, z: node.z + MAZE_HALL_HALF_WIDTH - 0.07 }
-        if (mazeDistance({ x: wall.x, z: wall.z + 0.3 }, layout) > 0) {
+        if (!node.courtyardTile && !maze.nodes[node.id + 1]?.courtyardTile
+          && mazeDistance({ x: wall.x, z: wall.z + 0.3 }, layout) > 0) {
           assert.ok(mazeCollisionDistance(wall, layout) > -0.3)
         }
       }
@@ -180,4 +213,51 @@ test('stair landing joins the maze without an invisible collision end cap', () =
     }
   }
   assert.ok(checked > 5)
+})
+
+test('courtyard internal tile seams have full-room clearance and solid outer margins', () => {
+  let seams = 0, margins = 0
+  for (let sample = 1; sample <= 40; sample++) {
+    const seed = sample / 81, settings = settingsFor(seed)
+    const layout = structureLayout(sample % 9 - 4, Math.floor(sample / 9) - 4, settings, seed)
+    if (!layout) continue
+    const maze = mazeForLayout(layout)
+    for (const a of maze.courtyardTiles) for (const b of maze.courtyardTiles) {
+      const adjacent = Math.abs(a.x - b.x) < 0.001 && Math.abs(Math.abs(a.z - b.z) - maze.stepZ) < 0.001
+        || Math.abs(a.z - b.z) < 0.001 && Math.abs(Math.abs(a.x - b.x) - maze.stepX) < 0.001
+      if (!adjacent) continue
+      const midpoint = { x: (a.x + b.x) / 2, z: (a.z + b.z) / 2 }
+      assert.ok(mazeDistance(midpoint, layout) < -PLAYER_RADIUS, 'Internal tile edge became a phantom wall')
+      assert.equal(isPositionBlocked(worldPoint(layout, midpoint), settings, seed), false)
+      seams++
+    }
+    const rear = Math.min(...maze.nodes.map(node => node.z - (node.courtyardTile ? maze.stepZ * 0.51 : Math.max(MAZE_ROOM_MIN_HALF_WIDTH, Math.min(maze.stepX, maze.stepZ) * node.room / 255))))
+    const point = worldPoint(layout, { x: maze.courtyardCenter.x, z: rear - 0.2 })
+    assert.equal(isPositionBlocked(point, settings, seed), true, 'Rear collision bounds ended before the wall')
+    assert.ok(Math.abs(terrainHeightAt(point.x, point.z, settings, seed) - (layout.ground - 5.6)) < 0.001, 'Terrain raised the player through a boundary')
+    margins++
+  }
+  assert.ok(seams > 100 && margins > 20)
+})
+
+
+test('marked courtyard thresholds return to clear outdoor ground without retriggering', () => {
+  let exits = 0
+  for (let sample = 1; sample <= 80; sample++) {
+    const seed = sample / 81, settings = settingsFor(seed)
+    const layout = structureLayout(sample % 9 - 4, Math.floor(sample / 9) - 4, settings, seed)
+    if (!layout) continue
+    const threshold = courtyardExitForLayout(layout)
+    assert.ok(threshold)
+    const origin = worldPoint(layout, threshold)
+    assert.equal(isPositionBlocked(origin, settings, seed), false)
+    const destination = portalDestinationAt(origin, settings, seed)
+    assert.equal(destination?.kind, 'courtyard-exit')
+    const y = terrainHeightAt(destination.x, destination.z, settings, seed) + 1.82
+    assert.ok(y > settings.water.level + 1.82)
+    assert.equal(isPositionBlocked({ ...destination, y }, settings, seed), false)
+    assert.equal(portalDestinationAt({ ...destination, y }, settings, seed), null)
+    exits++
+  }
+  assert.ok(exits > 30)
 })

@@ -2,11 +2,41 @@
 
 A persistent generative landscape shaped by images and text.
 
-![A sunset landscape with reflective water, desert plants, and a monumental entrance](screenshots/screen-04.v.1.0.0.alpha.3.png)
+![Landscape view](screenshots/screen-07.v.1.0.0.alpha.4.png)
 
-![A personal-art gallery inside the generated structure](screenshots/screen-05.v.1.0.0.alpha.3.png)
+![Hallway with portal sphere](screenshots/screen-08.v.1.0.0.alpha.4.png)
 
-![A large open building interior with personal art and stairs leading underground](screenshots/screen-06.v.1.0.0.alpha.3.png)
+![Indoor courtyard](screenshots/screen-09.v.1.0.0.alpha.4.png)
+
+## Challenge
+
+Read about the [challenge here](CHALLENGE.md)
+
+## Minimum Hardware Requirements
+
+These are practical starting points for a 1920 × 1080 desktop display without
+WebXR. Performance also depends on browser version, display pixel density, world
+complexity, and thermal limits. Auto mode is recommended when performance varies.
+
+All platforms require a current hardware-accelerated browser with WebGL 2 enabled,
+up-to-date graphics drivers, and at least 2 GB of free storage.
+
+| Platform | Quality | Processor | Memory | Graphics |
+| --- | --- | --- | ---: | --- |
+| Windows 10/11, 64-bit | Low | 4-core Intel Core i5 or AMD Ryzen 3 | 8 GB | Intel Iris Xe, Radeon Vega 8, GeForce GTX 1050 Ti, or Radeon RX 570 |
+| Windows 10/11, 64-bit | Medium | 6-core Intel Core i5 or AMD Ryzen 5 | 16 GB | GeForce GTX 1660 Super, Radeon RX 5600 XT, or Intel Arc A380 |
+| Windows 10/11, 64-bit | High | 6-core Intel Core i5 or AMD Ryzen 5 | 16 GB | GeForce RTX 3060 or Radeon RX 6700 XT |
+| 64-bit Linux with current Mesa or proprietary drivers | Low | 4-core Intel Core i5 or AMD Ryzen 3 | 8 GB | Intel Iris Xe, Radeon Vega 8, GeForce GTX 1050 Ti, or Radeon RX 570 |
+| 64-bit Linux with current Mesa or proprietary drivers | Medium | 6-core Intel Core i5 or AMD Ryzen 5 | 16 GB | GeForce GTX 1660 Super, Radeon RX 5600 XT, or Intel Arc A380 |
+| 64-bit Linux with current Mesa or proprietary drivers | High | 6-core Intel Core i5 or AMD Ryzen 5 | 16 GB | GeForce RTX 3060 or Radeon RX 6700 XT |
+| macOS 13 or later | Low | Apple M1 or newer | 8 GB unified memory | Apple M1 7-core GPU or better |
+| macOS 13 or later | Medium | Apple M1 Pro, M2, or newer | 16 GB unified memory | 10-core Apple GPU or better |
+| macOS 13 or later | High | Apple M2 Pro, M3 Pro, or newer | 16 GB unified memory | 16-core Apple GPU or better |
+
+High-DPI displays may render substantially more pixels than 1080p. Use Auto,
+Low, or Medium mode if the browser cannot sustain a comfortable frame rate.
+WebXR headsets have higher resolution and frame-rate requirements and may need
+faster hardware than the High desktop baseline.
 
 ## Run
 
@@ -100,7 +130,3 @@ AI analysis, included in exported world JSON, or bundled into the open source
 build. Clearing browser site data removes it; import the original pack again on
 another browser or device. If browser storage fails, the UI reports that the art
 is available only for the current visit.
-
-Water shading keeps broad swells in the distance and adds crossed ripples and
-fine capillary waves near the viewer. Detail and sharp glints fade smoothly with
-eye-to-water distance; Low quality omits the finest ripple layer.

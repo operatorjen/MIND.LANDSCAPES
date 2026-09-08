@@ -17,6 +17,18 @@ test('surface material catalog has unique, complete entries', () => {
   }
 })
 
+test('media-seeded indoor courtyard material is composed into the catalog', () => {
+  const courtyard = materialCatalog.find(({ key }) => key === 'indoor-courtyard')
+  assert.ok(courtyard)
+  assert.equal(courtyard.controls.maximumPerBuilding, 1)
+  assert.equal(courtyard.controls.ceiling, 'open-to-live-sky')
+  assert.match(materialGlsl, /courtyardStoneColor/)
+  assert.match(materialGlsl, /courtyardSoilColor/)
+  assert.match(materialGlsl, /courtyardFoliageColor/)
+  assert.ok(MATERIAL.courtyardFoliage > MATERIAL_BOUNDARY.grass)
+  assert.ok(MATERIAL.courtyardFoliage < MATERIAL_BOUNDARY.liminal)
+})
+
 test('bark contour material is composed into the shader catalog', () => {
   const bark = materialCatalog.find(({ key }) => key === 'bark-contours')
   assert.ok(bark)

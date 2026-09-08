@@ -91,11 +91,14 @@ const shaderMain = `
     vec3 position;
     float material;
     float waterDistance = outdoorWaterDistance(origin, direction);
+    float courtyardWater = courtyardWaterDistance(origin, direction);
+    bool mirrorWater = courtyardWater > 0.0 && (waterDistance < 0.0 || courtyardWater < waterDistance);
+    if (mirrorWater) waterDistance = courtyardWater;
 
     float sceneHit = marchScene(origin, direction, waterDistance, position, material);
     vec3 color;
     if (waterDistance > 0.0 && (sceneHit < 0.0 || waterDistance < sceneHit)) {
-      color = shadeWater(origin, direction, waterDistance);
+      color = mirrorWater ? shadeCourtyardWater(origin, direction, waterDistance) : shadeWater(origin, direction, waterDistance);
     } else if (sceneHit > 0.0) {
       color = shadeScene(direction, position, sceneHit, material);
     } else {

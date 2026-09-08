@@ -11,3 +11,15 @@ test('architecture continuously morphs from a weathered boulder into the detaile
   assert.doesNotMatch(architectureGlsl, /distantBase/)
   assert.doesNotMatch(architectureGlsl, /proximityDetail\(center, 18\.0, 88\.0\)/)
 })
+
+test('underground courtyards open a sky shaft only underground and use dedicated stone, soil and foliage surfaces', () => {
+  assert.match(architectureGlsl, /indoorCourtyardDistance/)
+  assert.match(architectureGlsl, /mazeNode\.a > 0\.5 && mazeNode\.a < 254\.5/)
+  assert.match(architectureGlsl, /courtyardOffset/)
+  assert.match(architectureGlsl, /columns \* 0\.5 - 0\.04/)
+  assert.match(architectureGlsl, /ceilingBoundary = courtyardNode \? -1000\.0/)
+  assert.match(architectureGlsl, /aboveStructure = max\(aboveStructure, -courtyardSkyShaft\)/)
+  assert.match(architectureGlsl, /MATERIAL_COURTYARD_STONE/)
+  assert.match(architectureGlsl, /MATERIAL_COURTYARD_SOIL/)
+  assert.match(architectureGlsl, /MATERIAL_COURTYARD_FOLIAGE/)
+})

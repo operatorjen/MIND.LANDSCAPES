@@ -15,9 +15,35 @@ import {
   sunlitOvergrowthGlsl
 } from './sunlit-overgrowth.glsl.js'
 import { personalArtGlsl } from './personal-art.glsl.js'
+import { flowersGlsl } from './flowers.glsl.js'
+import { indoorCourtyardGlsl } from './indoor-courtyard.glsl.js'
 import { MATERIAL_BOUNDARY } from '../../config/materials.js'
 
 export const materialCatalog = Object.freeze([
+  Object.freeze({
+    key: 'surreal-flowers',
+    label: 'Surreal courtyard flowers',
+    reference: 'dahlia whorls, rhododendron trumpets, rose bowls and sunflower disks',
+    appliesTo: 'collision-free indoor courtyard water gardens',
+    materialRange: Object.freeze([MATERIAL_BOUNDARY.succulent, MATERIAL_BOUNDARY.grass]),
+    mapping: 'seeded plant-local geometry with approach-based flowering',
+    outputs: Object.freeze(['dahlia', 'rhododendron', 'rose', 'sunflower', 'stem', 'seed-disk', 'close-petal-veins']),
+    textureInputs: Object.freeze([]),
+    controls: Object.freeze({ outdoorSpacing: 4.8, indoorSpacing: 3.4, nearDistance: 7, farDistance: 46 }),
+    shader: flowersGlsl
+  }),
+  Object.freeze({
+    key: 'indoor-courtyard',
+    label: 'Media-seeded underground wild garden',
+    reference: 'uploaded contour drawings and cracked, flowing turquoise, coral and gold paint',
+    appliesTo: 'one reachable garden of up to twelve cells per building',
+    materialRange: Object.freeze([MATERIAL_BOUNDARY.foliageDetail, MATERIAL_BOUNDARY.liminal]),
+    mapping: 'building-local courtyard stone, soil, moss and foliage',
+    outputs: Object.freeze(['rose-beige-stucco', 'textured-plaster-relief', 'dusk-wall-downlights', 'still-mirror-water', 'morphing-flowers']),
+    textureInputs: Object.freeze(['local browser art analysis palette and maze recipe', 'concrete height map']),
+    controls: Object.freeze({ variants: 3, ceiling: 'open-to-live-sky', maximumPerBuilding: 1 }),
+    shader: indoorCourtyardGlsl
+  }),
   Object.freeze({
     key: 'personal-art',
     label: 'Personal art',

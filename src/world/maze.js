@@ -1,6 +1,6 @@
-import { MAZE_HALL_HALF_WIDTH, MAZE_ROOM_MIN_HALF_WIDTH } from '../config/navigation.js'
+import { MAZE_HALL_HALF_WIDTH, MAZE_ROOM_MIN_HALF_WIDTH, mazeRearMargin } from '../config/navigation.js'
 export { MAZE_HALL_HALF_WIDTH } from '../config/navigation.js'
-export const MAZE_VERSION = 1
+export const MAZE_VERSION = 2
 export const MAZE_SIZE = 5
 const DIRECTIONS = [
   { dx: 1, dz: 0, bit: 1, opposite: 2 },
@@ -29,6 +29,9 @@ export function mazeRecipe(entries, worldSeed) {
     turnBias: clamp(0.5 + mean('psychedelicIntensity') * 0.2 + mean('abandonedInteriors') * 0.12 - mean('mechanicalIntensity') * 0.12, 0.25, 0.92),
     loops: clamp(0.04 + mean('ritualIntensity') * 0.08 + mean('psychedelicIntensity') * 0.08, 0.04, 0.3),
     rooms: clamp(0.15 + mean('ornateInteriors') * 0.28 + mean('sandyInteriors') * 0.15, 0.15, 0.85),
+    gardenLushness: clamp(0.34 + mean('shrubs') * 0.22 + mean('grasses') * 0.18
+      + mean('forests') * 0.16 + mean('psychedelicIntensity') * 0.08, 0.42, 1),
+    gardenStyle: 1 + hashMaze(`${fingerprint}:underground-garden`) % 3,
     reach: Math.round(clamp(4 + mean('psychedelicIntensity') * 3 + mean('abandonedInteriors') * 2, 4, 12))
   }
 }
@@ -54,7 +57,9 @@ export function mazeForLayout(layout) {
     x: (id % MAZE_SIZE - 2) * stepX + side * layout.width * 0.05,
     z: startZ - Math.floor(id / MAZE_SIZE) * stepZ,
     room: Math.round((0.28 + (random() < recipe.rooms ? random() * 0.15 : 0)) * 255),
-    portal: 0
+    portal: 0,
+    courtyard: 0,
+    courtyardTile: 0
   }))
   const visited = new Set([entry])
   const stack = [{ id: entry, direction: -1 }]
@@ -80,7 +85,39 @@ export function mazeForLayout(layout) {
   const second = distant.find(node => Math.abs(node.x - first.x) + Math.abs(node.z - first.z) > stepX + stepZ) || distant[1]
   const portals = [first, second].filter(Boolean)
   portals.forEach((node, index) => { node.portal = index + 1 })
-  const maze = { nodes, portals, entry, stepX, stepZ, startZ, paths, route: paths[first.id], halfWidth: MAZE_HALL_HALF_WIDTH }
+  const courtyardGroups = []
+  for (const [columns, rows, shape] of [[4, 3, 2], [3, 3, 1], [3, 2, 0]])
+  for (let row = 0; row <= MAZE_SIZE - rows; row++) for (let column = 0; column <= MAZE_SIZE - columns; column++) {
+    const tiles = []
+    for (let dz = 0; dz < rows; dz++) for (let dx = 0; dx < columns; dx++) tiles.push(nodes[(row + dz) * MAZE_SIZE + column + dx])
+    if (tiles.some(node => node.portal || node.id === entry) || tiles.some(node => paths[node.id].length < 3)) continue
+    courtyardGroups.push({
+      tiles, shape,
+      score: tiles.length * 100 + Math.min(...tiles.map(node => paths[node.id].length))
+        + tiles.reduce((sum, node) => sum + (bitCount(node.mask) === 1 ? 0.35 : 0), 0)
+    })
+  }
+  courtyardGroups.sort((a, b) => b.score - a.score || a.tiles[0].id - b.tiles[0].id)
+  const courtyardTiles = courtyardGroups[0]?.tiles || []
+  const courtyard = courtyardTiles.slice().sort((a, b) => paths[a.id].length - paths[b.id].length || a.id - b.id)[0]
+  if (courtyard) {
+    const styleOffset = hashMaze(`${recipe.fingerprint}:${layout.cellX},${layout.cellZ}:courtyard`) % 3
+    const style = 1 + (recipe.gardenStyle - 1 + styleOffset) % 3
+    courtyard.courtyard = style
+    courtyardTiles.forEach((node, role) => {
+      node.courtyardTile = role * 3 + style + courtyardGroups[0].shape * 48
+      node.room = Math.max(node.room, 128)
+    })
+  }
+  const maze = {
+    nodes, portals, courtyard, courtyardTiles,
+    courtyardCenter: courtyardTiles.length ? {
+      x: courtyardTiles.reduce((sum, node) => sum + node.x, 0) / courtyardTiles.length,
+      z: courtyardTiles.reduce((sum, node) => sum + node.z, 0) / courtyardTiles.length
+    } : null,
+    entry, stepX, stepZ, startZ, paths,
+    route: paths[first.id], courtyardRoute: courtyard ? paths[courtyard.id] : [], halfWidth: MAZE_HALL_HALF_WIDTH
+  }
   if (layouts.size >= 256) layouts.delete(layouts.keys().next().value)
   layouts.set(key, maze)
   layoutObjects.set(layout, maze)
@@ -88,7 +125,7 @@ export function mazeForLayout(layout) {
 }
 
 export function mazeDistance(local, layout) {
-  if (Math.abs(local.x) > layout.width * 0.5 + 2 || local.z > -layout.depth * 0.14 + 0.2 || local.z < -layout.depth * 0.78 - 2.5) return 1000
+  if (Math.abs(local.x) > layout.width * 0.5 + 2 || local.z > -layout.depth * 0.14 + 0.2 || local.z < -layout.depth * 0.78 - mazeRearMargin(layout.depth)) return 1000
   const maze = mazeForLayout(layout)
   const side = layout.variant > 0.5 ? 1 : -1
   const column = clamp(Math.round((local.x - side * layout.width * 0.05) / maze.stepX + 2), 0, 4)
@@ -97,7 +134,15 @@ export function mazeDistance(local, layout) {
   const x = local.x - node.x
   const z = local.z - node.z
   const room = Math.max(MAZE_ROOM_MIN_HALF_WIDTH, Math.min(maze.stepX, maze.stepZ) * node.room / 255)
-  let distance = box2(x, z, room, room)
+  const roomX = node.courtyardTile ? maze.stepX * 0.51 : room
+  const roomZ = node.courtyardTile ? maze.stepZ * 0.51 : room
+  let distance = box2(x, z, roomX, roomZ)
+  if (node.courtyardTile) {
+    const shape = Math.floor((node.courtyardTile - 1) / 48)
+    const columns = shape > 1 ? 4 : 3, rows = shape > 0 ? 3 : 2
+    distance = box2(local.x - maze.courtyardCenter.x, local.z - maze.courtyardCenter.z,
+      maze.stepX * (columns * 0.5 + 0.01), maze.stepZ * (rows * 0.5 + 0.01))
+  }
   if (node.mask & 1) distance = Math.min(distance, box2(x - maze.stepX / 2, z, maze.stepX / 2, maze.halfWidth))
   if (node.mask & 2) distance = Math.min(distance, box2(x + maze.stepX / 2, z, maze.stepX / 2, maze.halfWidth))
   if (node.mask & 4) distance = Math.min(distance, box2(x, z - maze.stepZ / 2, maze.halfWidth, maze.stepZ / 2))
@@ -126,7 +171,7 @@ function mazeBoundary(layout, maze) {
   const add = (x, z, hx, hz) => rectangles.push({ x0: x - hx, x1: x + hx, z0: z - hz, z1: z + hz })
   for (const node of maze.nodes) {
     const room = Math.max(MAZE_ROOM_MIN_HALF_WIDTH, Math.min(maze.stepX, maze.stepZ) * node.room / 255)
-    add(node.x, node.z, room, room)
+    add(node.x, node.z, node.courtyardTile ? maze.stepX * 0.51 : room, node.courtyardTile ? maze.stepZ * 0.51 : room)
     if (node.mask & 1) add(node.x + maze.stepX / 2, node.z, maze.stepX / 2, maze.halfWidth)
     if (node.mask & 8) add(node.x, node.z - maze.stepZ / 2, maze.halfWidth, maze.stepZ / 2)
   }
@@ -212,8 +257,24 @@ function randomSource(seed) {
   let state = seed >>> 0
   return () => { state = (Math.imul(1664525, state) + 1013904223) >>> 0; return state / 4294967296 }
 }
+function bitCount(value) {
+  let count = 0
+  for (let bits = value; bits; bits >>>= 1) count += bits & 1
+  return count
+}
 function box2(x, z, hx, hz) {
   const dx = Math.abs(x) - hx, dz = Math.abs(z) - hz
   return Math.hypot(Math.max(dx, 0), Math.max(dz, 0)) + Math.min(Math.max(dx, dz), 0)
 }
 function clamp(value, min, max) { return Math.min(max, Math.max(min, value)) }
+
+export function courtyardExitForLayout(layout) {
+  const maze = mazeForLayout(layout)
+  if (!maze.courtyard) return null
+  const shape = Math.floor((maze.courtyard.courtyardTile - 1) / 48)
+  const columns = shape > 1 ? 4 : 3, rows = shape > 0 ? 3 : 2
+  return {
+    x: maze.courtyardCenter.x + maze.stepX * (columns * 0.5 - 0.04) - 1.5,
+    z: maze.courtyardCenter.z - maze.stepZ * (rows * 0.5 - 0.06) + 0.9
+  }
+}

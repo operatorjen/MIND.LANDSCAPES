@@ -4,8 +4,6 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js",
-    "test:browser": "node scripts/browser-tests.js",
-    "test:all": "npm test && npm run test:browser"
+    "test": "node --test test/*.test.js"
   }
 }

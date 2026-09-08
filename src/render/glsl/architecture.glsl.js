@@ -46,7 +46,100 @@ export const architectureGlsl = `
     return boxDistance(shaped, halfBounds) * 0.82;
   }
 
-  float architectureDistance(vec3 point, out float material) {
+  vec3 courtyardLampPosition(vec2 halfSize, float index) {
+    float side = index < 2.0 ? -1.0 : 1.0;
+    return vec3(side * (halfSize.x - 0.02), 2.55, (mod(index, 2.0) * 2.0 - 1.0) * halfSize.y * 0.53);
+  }
+
+  bool courtyardCoordinates(vec3 position, out vec3 point, out vec2 halfSize) {
+    vec2 cell = floor((position.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    vec2 center = structureCenterForCell(cell);
+    float ground = terrainFoundation(center);
+    if (position.y > ground - 0.9) return false;
+    float variant = hash21(cell + 17.8);
+    float width = mix(15.0, 23.0, hash21(cell + 4.9)) * mix(0.9, 1.18, clamp(uMechanicalIntensity * 0.55 + uStructures * 0.2, 0.0, 1.0));
+    float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0));
+    vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * (position.xz - center);
+    vec4 node; vec2 nodeLocal;
+    mazePlanDistance(local, cell, width, depth, variant, node, nodeLocal);
+    if (node.a < 0.5 || node.a > 254.5) return false;
+    float shape = floor((node.a - 1.0) / 48.0);
+    vec2 count = vec2(shape > 1.5 ? 4.0 : 3.0, shape > 0.5 ? 3.0 : 2.0);
+    float role = floor(mod(node.a - 1.0, 48.0) / 3.0);
+    vec2 spacing = vec2(width * 0.17, (depth * 0.64 - 1.2) / 4.0);
+    vec2 offset = vec2(mod(role, count.x) - (count.x - 1.0) * 0.5, -(floor(role / count.x) - (count.y - 1.0) * 0.5)) * spacing;
+    point = vec3(nodeLocal.x + offset.x, position.y - ground + 5.1, nodeLocal.y + offset.y);
+    halfSize = spacing * (count * 0.5 - vec2(0.04, 0.06));
+    return true;
+  }
+
+  float indoorCourtyardDistance(
+    vec3 point, vec2 halfSize, float style, vec2 identity,
+    out float stone, out float soil, out float foliage,
+    out float thresholdGlow, out float flowerMaterial, float growth, bool includeFlowers
+  ) {
+    // A narrow, subtly lit threshold stands just inside the back corner.
+    vec2 exitRoot = vec2(halfSize.x - 1.5, -halfSize.y + 0.9);
+    vec3 gate = point - vec3(exitRoot.x, 0.18, exitRoot.y);
+    stone = min(boxDistance(gate - vec3(-0.68, 1.3, 0.0), vec3(0.075, 1.3, 0.11)),
+      boxDistance(gate - vec3(0.68, 1.3, 0.0), vec3(0.075, 1.3, 0.11)));
+    stone = min(stone, boxDistance(gate - vec3(0.0, 2.57, 0.0), vec3(0.75, 0.075, 0.11)));
+    thresholdGlow = min(boxDistance(gate - vec3(-0.59, 1.3, 0.0), vec3(0.012, 1.21, 0.025)),
+      boxDistance(gate - vec3(0.59, 1.3, 0.0), vec3(0.012, 1.21, 0.025)));
+    for (int i = 0; i < 4; i++) {
+      vec3 lamp = point - courtyardLampPosition(halfSize, float(i));
+      stone = min(stone, boxDistance(lamp, vec3(0.22, 0.14, 0.26)));
+    }
+    soil = 1000.0;
+    foliage = 1000.0;
+    flowerMaterial = MATERIAL_GRASS;
+    if (!includeFlowers) return min(stone, thresholdGlow);
+    float phase = hash21(identity + 19.3) * 6.2831853;
+    // Three irregular islands of flowers, with bounded work and no grid seams.
+    for (int i = 0; i < 12; i++) {
+      float index = float(i);
+      float random = hash21(identity + index * 7.31);
+      if (random > 0.78) continue;
+      float group = floor(index / 4.0);
+      float angle = phase + group * 2.0943951 + hash21(identity + group * 11.7) * 0.6;
+      vec2 cluster = vec2(cos(angle), sin(angle)) * halfSize * (0.34 + hash21(identity + group * 27.3) * 0.14);
+      float spray = phase + index * 2.39996 + random * 0.85;
+      float radius = 0.55 + hash21(identity + index * 17.91) * 1.45;
+      vec2 root = cluster + vec2(cos(spray), sin(spray)) * radius;
+      root = clamp(root, -halfSize + 1.15, halfSize - 1.15);
+      if (length(root - exitRoot) < 1.7) continue;
+      vec3 plant = point - vec3(root.x, 0.18, root.y);
+      float bound = boxDistance(plant - vec3(0.0, 1.4, 0.0), vec3(1.0, 1.4, 1.0));
+      if (bound >= min(foliage, min(stone, thresholdGlow))) continue;
+      float material = MATERIAL_GRASS;
+      float flower = bound > 0.18 ? bound : surrealFlowerDistance(plant,
+        floor(hash21(identity + index * 23.9 + 91.2) * 4.0), growth, random, material);
+      if (flower < foliage) { foliage = flower; flowerMaterial = material; }
+    }
+    return min(stone, min(foliage, thresholdGlow));
+  }
+
+  float courtyardWaterDistance(vec3 origin, vec3 direction) {
+    if (direction.y >= -0.0001) return -1.0;
+    vec2 cell = floor((origin.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    if (hash21(cell + uSeed * 0.043) > structurePresence()) return -1.0;
+    vec2 center = structureCenterForCell(cell);
+    float ground = terrainFoundation(center);
+    if (origin.y >= ground - 0.9 || ground < uWaterLevel + STRUCTURE_WATER_CLEARANCE) return -1.0;
+    float candidate = (ground - 5.42 - origin.y) / direction.y;
+    if (candidate <= 0.0) return -1.0;
+    float variant = hash21(cell + 17.8);
+    float widthExpression = clamp(uMechanicalIntensity * 0.55 + uStructures * 0.2, 0.0, 1.0);
+    float depthExpression = clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0);
+    float width = mix(15.0, 23.0, hash21(cell + 4.9)) * mix(0.9, 1.18, widthExpression);
+    float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, depthExpression);
+    vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * (origin.xz + direction.xz * candidate - center);
+    vec4 node; vec2 nodeLocal;
+    float corridor = mazePlanDistance(local, cell, width, depth, variant, node, nodeLocal);
+    return node.a > 0.5 && node.a < 254.5 && corridor < -0.02 ? candidate : -1.0;
+  }
+
+  float architectureComponentDistance(vec3 point, bool includeFlowers, out float material) {
     float spacing = STRUCTURE_CELL;
     vec2 cell = floor((point.xz + spacing * 0.5) / spacing);
     float random = hash21(cell + uSeed * 0.043);
@@ -79,7 +172,11 @@ export const architectureGlsl = `
       72.0 * uDetailScale,
       distanceToEnvelope
     );
-    float boulderMass = architectureBoulderDistance(local, cell, width, depth, height, variant);
+    bool undergroundView = cameraPosition.y < ground - 0.9;
+    if (undergroundView) structureDetail = 1.0;
+    float boulderMass = undergroundView || structureDetail >= 0.94
+      ? 1000.0
+      : architectureBoulderDistance(local, cell, width, depth, height, variant);
     if (structureDetail < 0.002) return boulderMass;
     float styleRoll = fract(
       hash21(cell + 155.4)
@@ -362,6 +459,17 @@ export const architectureGlsl = `
 
     float undergroundMass = 1000.0;
     float portalSurface = 0.0;
+    float courtyardFlowerMaterial = MATERIAL_COURTYARD_FOLIAGE;
+    float courtyardExitMass = 1000.0;
+    float courtyardExitSurface = 0.0;
+    float courtyardStoneMass = 1000.0;
+    float courtyardSoilMass = 1000.0;
+    float courtyardFoliageMass = 1000.0;
+    float courtyardSurface = 0.0;
+    float courtyardStoneSurface = 0.0;
+    float courtyardSoilSurface = 0.0;
+    float courtyardFoliageSurface = 0.0;
+    float courtyardSkyShaft = 1000.0;
     if (structureDetail > 0.002) {
       vec4 mazeNode;
       vec2 mazeLocal;
@@ -369,14 +477,53 @@ export const architectureGlsl = `
       float firstRow = stairEnd - 1.2;
       float lastRow = -depth * 0.78;
       float ceilingUnderside = -0.8 - fract(hash21(cell + 76.2) + uCeilingVariation * 0.41) * 0.55;
-      float cavity = max(corridor, max(-5.1 - local.y, local.y - ceilingUnderside));
+      bool courtyardNode = mazeNode.a > 0.5 && mazeNode.a < 254.5 && undergroundView;
+      float ceilingBoundary = courtyardNode ? -1000.0 : local.y - ceilingUnderside;
+      float cavity = max(corridor, max(-5.1 - local.y, ceilingBoundary));
       float envelope = boxDistance(
-        local - vec3(0.0, -2.3, (firstRow + lastRow) * 0.5),
-        vec3(width * 0.5, 2.8, (firstRow - lastRow) * 0.5 + 2.1)
+        local - vec3(0.0, -2.3, (firstRow + 2.1 + lastRow - mazeRearMargin(depth)) * 0.5),
+        vec3(width * 0.5, 2.8, (firstRow + 2.1 - lastRow + mazeRearMargin(depth)) * 0.5)
       );
       float shell = max(envelope, -cavity);
       shell = max(shell, -stairVoid);
       float marker = 1000.0;
+      if (courtyardNode) {
+        vec2 spacing = vec2(width * 0.17, (depth * 0.64 - 1.2) / 4.0);
+        float courtyardShape = floor((mazeNode.a - 1.0) / 48.0);
+        float columns = courtyardShape > 1.5 ? 4.0 : 3.0;
+        float rows = courtyardShape > 0.5 ? 3.0 : 2.0;
+        float encodedCourtyard = mod(mazeNode.a - 1.0, 48.0);
+        float courtyardRole = floor(encodedCourtyard / 3.0);
+        float courtyardStyle = mod(encodedCourtyard, 3.0) + 1.0;
+        vec2 courtyardOffset = vec2((mod(courtyardRole, columns) - (columns - 1.0) * 0.5) * spacing.x,
+          -(floor(courtyardRole / columns) - (rows - 1.0) * 0.5) * spacing.y);
+        vec3 courtyardPoint = vec3(mazeLocal + courtyardOffset, local.y + 5.1);
+        courtyardPoint = courtyardPoint.xzy;
+        courtyardSkyShaft = mazeBox(courtyardPoint.xz, spacing * vec2(columns * 0.5 - 0.04, rows * 0.5 - 0.06));
+        float courtyardDecor = indoorCourtyardDistance(
+          courtyardPoint,
+          spacing * vec2(columns * 0.5 - 0.04, rows * 0.5 - 0.06),
+          courtyardStyle,
+          cell + courtyardStyle * 17.3,
+          courtyardStoneMass,
+          courtyardSoilMass,
+          courtyardFoliageMass,
+          courtyardExitMass,
+          courtyardFlowerMaterial,
+          proximityDetail(point.xz, 7.0, 46.0),
+          includeFlowers
+        );
+        // Keep the maze's navigation sample columns free of woody planting.
+        float navigationClearance = 0.44 - length(mazeLocal);
+        courtyardFoliageMass = max(courtyardFoliageMass, navigationClearance);
+        courtyardDecor = min(courtyardStoneMass, min(courtyardSoilMass, min(courtyardFoliageMass, courtyardExitMass)));
+        courtyardSurface = 1.0;
+        courtyardStoneSurface = step(courtyardStoneMass, min(shell, min(courtyardSoilMass, courtyardFoliageMass)));
+        courtyardSoilSurface = step(courtyardSoilMass, min(shell, min(courtyardStoneMass, courtyardFoliageMass)));
+        courtyardFoliageSurface = step(courtyardFoliageMass, min(shell, min(courtyardStoneMass, courtyardSoilMass)));
+        courtyardExitSurface = step(courtyardExitMass, min(shell, min(courtyardStoneMass, min(courtyardSoilMass, courtyardFoliageMass))));
+        shell = min(shell, courtyardDecor);
+      }
       if (mazeNode.b > 0.0 && mazeNode.a > 0.0) {
         vec3 portalPoint = vec3(mazeLocal.x, local.y + 3.78, mazeLocal.y);
         float portalTime = uTime * uMotionScale;
@@ -398,16 +545,26 @@ export const architectureGlsl = `
 
     float baseMass = min(cathedral, exteriorMass);
     float aboveStructure = min(baseMass, interiorMass);
+    aboveStructure = max(aboveStructure, -courtyardSkyShaft);
     float structure = min(aboveStructure, undergroundMass);
     float cathedralSurface = step(cathedral, min(exteriorMass, interiorMass));
     float ceilingSurface = step(interiorMass, baseMass);
     float undergroundSurface = step(undergroundMass, aboveStructure);
     float innerSurface = step(outer, -inner);
     if (undergroundSurface > 0.5) {
-      material = portalSurface > 0.5 ? MATERIAL_PORTAL : undergroundMaterial;
+      material = portalSurface > 0.5 ? MATERIAL_PORTAL
+        : courtyardExitSurface > 0.5 ? MATERIAL_COURTYARD_EXIT
+        : courtyardFoliageSurface > 0.5 ? courtyardFlowerMaterial
+        : courtyardSoilSurface > 0.5 ? MATERIAL_COURTYARD_SOIL
+        : courtyardStoneSurface > 0.5 || courtyardSurface > 0.5 ? MATERIAL_COURTYARD_STONE
+        : undergroundMaterial;
     } else if (cathedralSurface * innerSurface > 0.5 || ceilingSurface > 0.5) {
       material = interiorMaterial;
     }
-    return morphArchitectureDistance(boulderMass, structure, structureDetail);
+    return undergroundView ? structure : morphArchitectureDistance(boulderMass, structure, structureDetail);
+  }
+
+  float architectureDistance(vec3 point, out float material) {
+    return architectureComponentDistance(point, true, material);
   }
 `

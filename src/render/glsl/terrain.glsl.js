@@ -54,26 +54,34 @@ export const terrainGlsl = `
   }
 
   float terrainHeight(vec2 point) {
-    float height = terrainBaseHeight(point);
     vec2 cell = floor((point + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
-    float random = hash21(cell + uSeed * 0.043);
-    if (random > structurePresence()) return height;
-
     vec2 center = structureCenterForCell(cell);
     vec2 planar = point - center;
-    if (max(abs(planar.x), abs(planar.y)) > 48.0) return height;
-    float ground = terrainFoundation(center);
-    if (ground < uWaterLevel + STRUCTURE_WATER_CLEARANCE) return height;
-
-    float variant = hash21(cell + 17.8);
-    float widthExpression = clamp(uMechanicalIntensity * 0.55 + uStructures * 0.2, 0.0, 1.0);
-    float depthExpression = clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0);
-    float width = mix(15.0, 23.0, hash21(cell + 4.9)) * mix(0.9, 1.18, widthExpression);
-    float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, depthExpression);
-    vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * planar;
-    float edge = max(abs(local.x) - width * 0.62 - 0.6, abs(local.y) - depth * 0.58 - 0.6);
-    float grade = 1.0 - smoothstep(0.0, 6.0, edge);
-    height = mix(height, ground, grade);
+    bool structure = hash21(cell + uSeed * 0.043) <= structurePresence()
+      && max(abs(planar.x), abs(planar.y)) <= 48.0;
+    float ground = 0.0;
+    float grade = 0.0;
+    float variant = 0.0;
+    float width = 0.0;
+    float depth = 0.0;
+    vec2 local = vec2(0.0);
+    if (structure) {
+      ground = terrainFoundation(center);
+      structure = ground >= uWaterLevel + STRUCTURE_WATER_CLEARANCE;
+      if (structure) {
+        variant = hash21(cell + 17.8);
+        float widthExpression = clamp(uMechanicalIntensity * 0.55 + uStructures * 0.2, 0.0, 1.0);
+        float depthExpression = clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0);
+        width = mix(15.0, 23.0, hash21(cell + 4.9)) * mix(0.9, 1.18, widthExpression);
+        depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, depthExpression);
+        local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * planar;
+        float edge = max(abs(local.x) - width * 0.62 - 0.6, abs(local.y) - depth * 0.58 - 0.6);
+        grade = 1.0 - smoothstep(0.0, 6.0, edge);
+      }
+    }
+    float height = ground;
+    if (grade < 1.0) height = mix(terrainBaseHeight(point), ground, grade);
+    if (!structure) return height;
 
     float stairSide = variant > 0.5 ? 1.0 : -1.0;
     float stairX = stairSide * width * 0.22;
@@ -86,7 +94,7 @@ export const terrainGlsl = `
     }
 
     float lastRow = -depth * 0.78;
-    if (abs(local.x) < width * 0.5 && local.y < stairEnd + 0.2 && local.y > lastRow - 2.1) {
+    if (abs(local.x) < width * 0.5 && local.y < stairEnd + 0.2 && local.y > lastRow - mazeRearMargin(depth)) {
       height = min(height, ground - UNDERGROUND_DESCENT);
     }
     return height;
@@ -104,7 +112,7 @@ export const terrainGlsl = `
     float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0));
     vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * planar;
     return abs(local.x) < width * 0.62 + 0.6
-      && local.y < depth * 0.58 + 0.6 && local.y > -depth * 0.78 - 2.5;
+      && local.y < depth * 0.58 + 0.6 && local.y > -depth * 0.78 - mazeRearMargin(depth);
   }
 
   float outdoorWaterDistance(vec3 origin, vec3 direction) {

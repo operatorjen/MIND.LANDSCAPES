@@ -1,4 +1,5 @@
-import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, mazeRouteAt, portalArrival, hashMaze } from './maze.js'
+import { mazeRearMargin } from '../config/navigation.js'
+import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, mazeRouteAt, portalArrival, hashMaze, courtyardExitForLayout } from './maze.js'
 import {
   STAIR_WIDTH,
   STRUCTURE_CELL_SIZE,
@@ -40,7 +41,9 @@ export function walkingSurfaceAt(x, z, eyeY, settings, seed, cache) {
   const stairs = undergroundLayout(layout)
   const onStairs = Math.abs(local.x - stairs.stairX) < stairs.stairWidth
     && local.z <= stairs.stairStart && local.z >= stairs.stairEnd
-  return !onStairs && mazeDistance(local, layout) < 0 ? layout.ground : floor
+  return !onStairs && Math.abs(local.x) < layout.width * 0.5
+    && local.z < stairs.stairEnd + 0.2 && local.z > -layout.depth * 0.78 - mazeRearMargin(layout.depth)
+    ? layout.ground : floor
 }
 
 function terrainBaseHeightAt(x, z, settings, seed) {
@@ -103,7 +106,10 @@ function structureFloorHeight(local, layout, surfaceHeight) {
     surfaceHeight = Math.min(surfaceHeight, layout.ground - stepped * underground.descent)
   }
 
-  if (mazeDistance(local, layout) < 0) surfaceHeight = Math.min(surfaceHeight, layout.ground - underground.descent)
+  if (Math.abs(local.x) < layout.width * 0.5 && local.z < underground.stairEnd + 0.2
+    && local.z > -layout.depth * 0.78 - mazeRearMargin(layout.depth)) {
+    surfaceHeight = Math.min(surfaceHeight, layout.ground - underground.descent)
+  }
 
   return surfaceHeight
 }
@@ -119,6 +125,19 @@ export function portalDestinationAt(position, settings, seed, cache) {
       const local = structureLocal(position.x - source.centerX, position.z - source.centerZ, source.angle)
       if (position.y >= source.ground - 0.8 || Math.abs(local.x) > source.width * 0.5 || local.z > -source.depth * 0.14) continue
       const maze = mazeForLayout(source)
+      const gardenExit = courtyardExitForLayout(source)
+      if (gardenExit && Math.hypot(local.x - gardenExit.x, local.z - gardenExit.z) < 0.48
+        && position.y > source.ground - 5.0 && position.y < source.ground - 2.0) {
+        // A deliberate, one-way threshold; use the existing covered transition.
+        for (const distance of [7, 9, 11, 13, 15, 17, 19, 21, 23, 25, 1.2]) {
+          const outside = structureWorld(0, source.depth * 0.5 + distance, source)
+          const ground = terrainHeightAt(outside.x, outside.z, settings, seed, cache)
+          if (ground < settings.water.level + 0.3
+            || isPositionBlocked({ ...outside, y: ground + 1.82 }, settings, seed, 0.34, cache)
+            || isUndergroundAt(outside.x, outside.z, settings, seed, cache)) continue
+          return { x: outside.x, z: outside.z, yaw: Math.atan2(-(outside.x - source.centerX), -(outside.z - source.centerZ)), rotation: 0, kind: 'courtyard-exit' }
+        }
+      }
       const portalIndex = maze.portals.findIndex(node => Math.hypot(local.x - node.x, local.z - node.z) < 0.68)
       if (portalIndex < 0) continue
       const destination = findPortalDestination(source, portalIndex, settings, seed, cache)
@@ -380,10 +399,12 @@ function isBlockedByUnderground(local, worldY, layout, radius) {
 
   const stairSpan = local.z <= underground.stairStart + radius
     && local.z >= underground.stairEnd - radius
+  const insideStairPassage = Math.abs(local.x - underground.stairX) < underground.stairWidth
+  if (stairSpan && insideStairPassage) return false
   const stairWall = Math.abs(local.x - underground.stairX) >= underground.stairWidth - radius
     && Math.abs(local.x - underground.stairX) < underground.stairWidth + layout.wall + radius
   if (stairSpan && stairWall && local.z > underground.stairEnd + 0.2) return true
-  if (local.z > underground.stairEnd + 0.2 || local.z < -layout.depth * 0.78 - 2.5
+  if (local.z > underground.stairEnd + 0.2 || local.z < -layout.depth * 0.78 - mazeRearMargin(layout.depth)
     || Math.abs(local.x) > layout.width * 0.5 + radius) return false
   return mazeCollisionDistance(local, layout) > -radius
 

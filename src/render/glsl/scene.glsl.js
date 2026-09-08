@@ -12,12 +12,6 @@ export const sceneGlsl = `
     float terrain = point.y - terrainSurface;
     float forestMaterial;
     float forest = forestDistance(point, terrainSurface, forestMaterial);
-    float growthMaterial;
-    float growth = groundGrowthDistance(point, growthMaterial);
-    if (growth < forest) {
-      forest = growth;
-      forestMaterial = growthMaterial;
-    }
     float architectureMaterial;
     float architecture = architectureDistance(point, architectureMaterial);
     componentDistances = vec3(terrain, forestMarchDistance(point.xz, forest), architecture);
@@ -39,15 +33,15 @@ export const sceneGlsl = `
   float componentDistanceOnly(vec3 point, float material) {
     if (material < MATERIAL_TERRAIN_MAX) return point.y - terrainHeight(point.xz);
     if (material > MATERIAL_SUCCULENT_MAX && material < MATERIAL_GRASS_MAX) {
-      float growthMaterial;
-      return groundGrowthDistance(point, growthMaterial);
+      float flowerMaterial;
+      return architectureDistance(point, flowerMaterial);
     }
     if (material < MATERIAL_GRASS_MAX) {
       float forestMaterial;
       return forestDistance(point, terrainHeight(point.xz), forestMaterial);
     }
     float architectureMaterial;
-    return architectureDistance(point, architectureMaterial);
+    return architectureComponentDistance(point, false, architectureMaterial);
   }
 
   vec3 sceneNormal(vec3 point, float distanceFromCamera, float material) {

@@ -26,6 +26,11 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
     float chance = clamp(vegetationWeight * 0.72, 0.0, 0.88);
     if (random > chance) return 1000.0;
 
+    float kindSelector = hash21(cell + 84.3) * max(vegetationWeight, 0.001);
+    bool isSucculent = kindSelector < succulentWeight;
+    bool isShrub = !isSucculent && kindSelector < succulentWeight + shrubWeight;
+    float density = isSucculent || isShrub ? uPlantDensity : uTreeDensity;
+    if (densityRoll > density) return 1000.0;
     float ground = terrainHeight(center);
     if (ground < uWaterLevel + VEGETATION_WATER_CLEARANCE) return 1000.0;
     float plantDistance = length(center - cameraPosition.xz);
@@ -35,25 +40,9 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
       plantDistance
     );
 
-    float kindSelector = hash21(cell + 84.3) * max(vegetationWeight, 0.001);
-    bool isSucculent = kindSelector < succulentWeight;
-    bool isShrub = !isSucculent && kindSelector < succulentWeight + shrubWeight;
-    float density = isSucculent || isShrub ? uPlantDensity : uTreeDensity;
-    if (densityRoll > density) return 1000.0;
     float speciesRoll = hash21(cell + 42.6);
     float species = meadowBiome > 0.45 ? mix(0.52, 0.86, speciesRoll) : speciesRoll;
     float age = mix(0.72, 1.24, hash21(cell + 8.7));
-    float side = random > 0.5 ? 1.0 : -1.0;
-    float treeRotation = (random - 0.5) * 2.4;
-    vec2 solarBias = vec2(0.0, 1.0) * rotate2(treeRotation);
-    vec2 solarCross = vec2(-solarBias.y, solarBias.x);
-    vec2 leanSource = vec2(random - 0.38, hash21(cell + 15.2) - 0.56);
-    vec2 lean = leanSource / max(length(leanSource), 0.001);
-    float leanAmount = species < 0.24 ? 0.46 : mix(0.62, 1.72, hash21(cell + 19.4));
-    float solarLean = mix(0.32, 0.82, hash21(cell + 23.7)) * age;
-    float trunkCurveSign = hash21(cell + 32.6) > 0.5 ? 1.0 : -1.0;
-    float trunkCurve = mix(0.16, 0.5, hash21(cell + 28.9)) * age * trunkCurveSign;
-
     float bodyGrowth = smoothstep(0.0, 0.72, plantDetail);
     float foliageGrowth = smoothstep(0.18, 0.78, plantDetail);
     vec3 growthScale = mix(vec3(0.32, 0.055, 0.32), vec3(1.0), bodyGrowth);
@@ -73,6 +62,17 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
       material = coarseMaterial;
       return coarseDistance * distanceScale;
     }
+
+    float side = random > 0.5 ? 1.0 : -1.0;
+    float treeRotation = (random - 0.5) * 2.4;
+    vec2 solarBias = vec2(0.0, 1.0) * rotate2(treeRotation);
+    vec2 solarCross = vec2(-solarBias.y, solarBias.x);
+    vec2 leanSource = vec2(random - 0.38, hash21(cell + 15.2) - 0.56);
+    vec2 lean = leanSource / max(length(leanSource), 0.001);
+    float leanAmount = species < 0.24 ? 0.46 : mix(0.62, 1.72, hash21(cell + 19.4));
+    float solarLean = mix(0.32, 0.82, hash21(cell + 23.7)) * age;
+    float trunkCurveSign = hash21(cell + 32.6) > 0.5 ? 1.0 : -1.0;
+    float trunkCurve = mix(0.16, 0.5, hash21(cell + 28.9)) * age * trunkCurveSign;
 
     if (isSucculent) {
       vec3 plant = vec3(local.x, point.y - ground, local.y);

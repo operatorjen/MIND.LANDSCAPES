@@ -147,9 +147,10 @@ export class MindLandscape {
   render(time) {
     if (this.contextLost || this.disposed) return
     this.timer.update(time)
-    const delta = Math.min(this.timer.getDelta(), MAX_FRAME_DELTA)
+    const frameDelta = this.timer.getDelta()
+    const delta = Math.min(frameDelta, MAX_FRAME_DELTA)
 
-    this.quality.sample(delta, this.renderer.xr.isPresenting)
+    this.quality.sample(frameDelta, this.renderer.xr.isPresenting)
     if (!this.renderer.xr.isPresenting) this.controls.update(delta)
     this.landscape.uniforms.uPortalGlow.value = this.controls.portalGlow
     this.landscape.update(this.timer.getElapsed(), delta)

@@ -39,7 +39,8 @@ export class MazeAtlas {
         this.data[offset] = node.mask
         this.data[offset + 1] = node.room
         this.data[offset + 2] = node.portal
-        this.data[offset + 3] = 255
+        // Alpha remains a validity byte; values below 254 encode courtyard tiles, style and footprint.
+        this.data[offset + 3] = node.courtyardTile || 255
       }
     }
     this.uniforms.uMazeOrigin.value.set(x, z)

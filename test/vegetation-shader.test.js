@@ -24,6 +24,6 @@ test('vegetation shader composes subsystem modules in dependency order', () => {
     previousIndex = index
   }
 
-  assert.match(vegetationGlsl, /float groundGrowthDistance/)
+  assert.match(vegetationGlsl, /float surrealFlowerDistance/)
   assert.match(vegetationGlsl, /float forestDistance/)
 })
