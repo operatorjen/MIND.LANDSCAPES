@@ -10,7 +10,7 @@ A persistent generative landscape shaped by images and text.
 
 ## Challenge
 
-Read about the [challenge here](CHALLENGE.md)
+Read about the [challenge here](INFERENCE_EFFICIENCY.md)
 
 ## Minimum Hardware Requirements
 
