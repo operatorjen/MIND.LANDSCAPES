@@ -23,10 +23,15 @@ test('media-seeded indoor courtyard material is composed into the catalog', () =
   assert.equal(courtyard.controls.maximumPerBuilding, 1)
   assert.equal(courtyard.controls.ceiling, 'open-to-live-sky')
   assert.match(materialGlsl, /courtyardStoneColor/)
+  assert.match(materialGlsl, /dustyShadow/)
+  assert.match(materialGlsl, /sunFadedTerracotta/)
+  assert.match(materialGlsl, /detail \* 0\.17/)
   assert.match(materialGlsl, /courtyardSoilColor/)
   assert.match(materialGlsl, /courtyardFoliageColor/)
   assert.ok(MATERIAL.courtyardFoliage > MATERIAL_BOUNDARY.grass)
   assert.ok(MATERIAL.courtyardFoliage < MATERIAL_BOUNDARY.liminal)
+  assert.ok(MATERIAL.courtyardRock > MATERIAL.courtyardStone)
+  assert.ok(MATERIAL.courtyardRock < MATERIAL_BOUNDARY.concrete)
 })
 
 test('bark contour material is composed into the shader catalog', () => {

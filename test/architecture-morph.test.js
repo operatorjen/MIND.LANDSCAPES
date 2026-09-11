@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { architectureGlsl } from '../src/render/glsl/architecture.glsl.js'
+import { lightingGlsl } from '../src/render/glsl/lighting.glsl.js'
 
 test('architecture continuously morphs from a weathered boulder into the detailed structure', () => {
   assert.match(architectureGlsl, /architectureBoulderDistance/)
@@ -22,4 +23,20 @@ test('underground courtyards open a sky shaft only underground and use dedicated
   assert.match(architectureGlsl, /MATERIAL_COURTYARD_STONE/)
   assert.match(architectureGlsl, /MATERIAL_COURTYARD_SOIL/)
   assert.match(architectureGlsl, /MATERIAL_COURTYARD_FOLIAGE/)
+  assert.match(architectureGlsl, /courtyardWaterShape/)
+  assert.match(architectureGlsl, /courtyardEdgeJitter/)
+  assert.match(architectureGlsl, /soilEdgeWeight/)
+  assert.match(architectureGlsl, /courtyardSoilBand/)
+  assert.match(architectureGlsl, /courtyardRockDistance/)
+  assert.match(architectureGlsl, /MATERIAL_COURTYARD_ROCK/)
+  assert.match(lightingGlsl, /float courtyardReflectionSteps = 12\.0/)
+  assert.match(lightingGlsl, /float courtyardReflectionSteps = 20\.0/)
+  assert.match(lightingGlsl, /float courtyardReflectionSteps = 28\.0/)
+})
+
+test('portal motion uses a bounded periodic phase and flow field', () => {
+  assert.match(architectureGlsl, /float portalTime = mod\(uTime \* uMotionScale, 628\.31854\)/)
+  assert.match(lightingGlsl, /float portalTime = mod\(uTime \* uMotionScale, 628\.31854\)/)
+  assert.match(lightingGlsl, /vec2 portalFlow = vec2\(sin\(portalTime \* 0\.12\), cos\(portalTime \* 0\.12\)\) \* 1\.35/)
+  assert.doesNotMatch(lightingGlsl, /-portalTime \* 0\.12/)
 })

@@ -5,8 +5,10 @@ import {
   portalDestinationAt,
   structureLayout,
   terrainHeightAt,
-  undergroundPathAt
+  undergroundPathAt,
+  vegetationHasCollision
 } from '../src/world/spatial-layout.js'
+import { QUALITY_PROFILES } from '../src/config/rendering.js'
 import { deriveSettings } from '../src/world/world-state.js'
 
 const SEED = 0.314159
@@ -37,6 +39,13 @@ test('terrain height remains stable for a fixed position and seed', () => {
 
   assert.ok(Math.abs(height - 1.6792820399309885) < POSITION_TOLERANCE)
   assert.equal(height, terrainHeightAt(12.5, -7.25, settings, SEED))
+})
+
+test('vegetation collision only uses plants visible on every quality tier', () => {
+  assert.equal(vegetationHasCollision('tree', QUALITY_PROFILES.low.treeDensity), true)
+  assert.equal(vegetationHasCollision('tree', QUALITY_PROFILES.low.treeDensity + 0.001), false)
+  assert.equal(vegetationHasCollision('shrub', QUALITY_PROFILES.low.plantDensity), true)
+  assert.equal(vegetationHasCollision('succulent', QUALITY_PROFILES.low.plantDensity + 0.001), false)
 })
 
 test('structure layout remains stable for a fixed cell and seed', () => {

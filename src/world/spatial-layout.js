@@ -1,4 +1,5 @@
 import { mazeRearMargin } from '../config/navigation.js'
+import { QUALITY_PROFILES } from '../config/rendering.js'
 import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, mazeRouteAt, portalArrival, hashMaze, courtyardExitForLayout } from './maze.js'
 import {
   STAIR_WIDTH,
@@ -231,6 +232,8 @@ function isBlockedByTree(position, settings, seed, radius, cache) {
 
       const ground = vegetation.ground
       const { age, kind, species } = vegetation
+      const densityRoll = hash21(cellX + shaderSeed * 0.13 + 611.3, cellZ + shaderSeed * 0.13 + 611.3, shaderSeed)
+      if (!vegetationHasCollision(kind, densityRoll)) continue
       const vertical = position.y - ground
 
       if (kind === 'succulent') {
@@ -265,6 +268,11 @@ function isBlockedByTree(position, settings, seed, radius, cache) {
   }
 
   return false
+}
+
+export function vegetationHasCollision(kind, densityRoll) {
+  const density = kind === 'tree' ? QUALITY_PROFILES.low.treeDensity : QUALITY_PROFILES.low.plantDensity
+  return densityRoll <= density
 }
 
 function vegetationAt(cellX, cellZ, center, settings, shaderSeed, seed, cache) {

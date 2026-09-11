@@ -1,4 +1,5 @@
 import { MAZE_HALL_HALF_WIDTH, MAZE_ROOM_MIN_HALF_WIDTH, mazeRearMargin } from '../config/navigation.js'
+import { STAIR_WIDTH } from '../config/world.js'
 export { MAZE_HALL_HALF_WIDTH } from '../config/navigation.js'
 export const MAZE_VERSION = 2
 export const MAZE_SIZE = 5
@@ -148,7 +149,7 @@ export function mazeDistance(local, layout) {
   if (node.mask & 4) distance = Math.min(distance, box2(x, z - maze.stepZ / 2, maze.halfWidth, maze.stepZ / 2))
   if (node.mask & 8) distance = Math.min(distance, box2(x, z + maze.stepZ / 2, maze.halfWidth, maze.stepZ / 2))
   const stairEnd = -layout.depth * 0.14
-  return Math.min(distance, box2(local.x - side * layout.width * 0.22, local.z - (stairEnd + maze.startZ) / 2, 1.45, (stairEnd - maze.startZ) / 2 + 0.2))
+  return Math.min(distance, box2(local.x - side * layout.width * 0.22, local.z - (stairEnd + maze.startZ) / 2, STAIR_WIDTH, (stairEnd - maze.startZ) / 2 + 0.2))
 }
 
 export function mazeCollisionDistance(local, layout) {
@@ -177,10 +178,10 @@ function mazeBoundary(layout, maze) {
   }
   const stairEnd = -layout.depth * 0.14
   add((layout.variant > 0.5 ? 1 : -1) * layout.width * 0.22,
-    (stairEnd + maze.startZ) / 2, 1.45, (stairEnd - maze.startZ) / 2 + 0.2)
+    (stairEnd + maze.startZ) / 2, STAIR_WIDTH, (stairEnd - maze.startZ) / 2 + 0.2)
   const stairStart = layout.depth * 0.2
   add((layout.variant > 0.5 ? 1 : -1) * layout.width * 0.22,
-    (stairStart + stairEnd) / 2, 1.45, (stairStart - stairEnd) / 2 + 0.18)
+    (stairStart + stairEnd) / 2, STAIR_WIDTH, (stairStart - stairEnd) / 2 + 0.18)
   const walls = []
   for (const rectangle of rectangles) {
     for (const vertical of [true, false]) for (const positive of [false, true]) {

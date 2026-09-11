@@ -62,8 +62,8 @@ export const concreteAggregateGlsl = `
 
     vec2 coordinate = concreteCoordinates(position, surfaceNormal) * CONCRETE_AGGREGATE_SCALE;
     vec2 textureCoordinate = concreteCoordinates(position, surfaceNormal) * CONCRETE_TEXTURE_SCALE;
-    float textureHeight = texture2D(uConcreteHeightMap, textureCoordinate).r;
-    float fineHeight = texture2D(uConcreteHeightMap, textureCoordinate * 2.17 + vec2(0.37, 0.61)).r;
+    float textureHeight = texture2D(uConcreteHeightMap, fract(textureCoordinate)).r;
+    float fineHeight = texture2D(uConcreteHeightMap, fract(textureCoordinate * 2.17 + vec2(0.37, 0.61))).r;
     textureHeight = mix(textureHeight, fineHeight, 0.24);
     vec2 cell = floor(coordinate);
     vec2 local = fract(coordinate) - 0.5;

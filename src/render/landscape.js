@@ -28,10 +28,11 @@ export class Landscape {
     this.mazeAtlas = new MazeAtlas(this.uniforms)
     this.artAtlas = new ArtAtlas(this.uniforms)
     this.concreteHeightMap = new THREE.TextureLoader().load('/assets/textures/concrete-height.png')
-    this.concreteHeightMap.wrapS = THREE.RepeatWrapping
-    this.concreteHeightMap.wrapT = THREE.RepeatWrapping
-    this.concreteHeightMap.minFilter = THREE.LinearMipmapLinearFilter
+    this.concreteHeightMap.wrapS = THREE.ClampToEdgeWrapping
+    this.concreteHeightMap.wrapT = THREE.ClampToEdgeWrapping
+    this.concreteHeightMap.minFilter = THREE.LinearFilter
     this.concreteHeightMap.magFilter = THREE.LinearFilter
+    this.concreteHeightMap.generateMipmaps = false
     this.concreteHeightMap.colorSpace = THREE.NoColorSpace
     this.uniforms.uConcreteHeightMap.value = this.concreteHeightMap
     this.sunlitOvergrowthMap = new THREE.TextureLoader().load('/assets/textures/sunlit-overgrowth-mask.png')

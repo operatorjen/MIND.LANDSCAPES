@@ -39,7 +39,7 @@ export const materialCatalog = Object.freeze([
     appliesTo: 'one reachable garden of up to twelve cells per building',
     materialRange: Object.freeze([MATERIAL_BOUNDARY.foliageDetail, MATERIAL_BOUNDARY.liminal]),
     mapping: 'building-local courtyard stone, soil, moss and foliage',
-    outputs: Object.freeze(['rose-beige-stucco', 'textured-plaster-relief', 'dusk-wall-downlights', 'still-mirror-water', 'morphing-flowers']),
+    outputs: Object.freeze(['rose-beige-stucco', 'textured-plaster-relief', 'dusk-wall-downlights', 'curving-stream-water', 'low-river-boulders', 'morphing-flowers']),
     textureInputs: Object.freeze(['local browser art analysis palette and maze recipe', 'concrete height map']),
     controls: Object.freeze({ variants: 3, ceiling: 'open-to-live-sky', maximumPerBuilding: 1 }),
     shader: indoorCourtyardGlsl

@@ -1,4 +1,5 @@
 import { MAZE_HALL_HALF_WIDTH, MAZE_ROOM_MIN_HALF_WIDTH } from '../../config/navigation.js'
+import { STAIR_WIDTH } from '../../config/world.js'
 
 export const mazeGlsl = `
   float mazeRearMargin(float depth) {
@@ -45,6 +46,6 @@ export const mazeGlsl = `
     if (mod(floor(nodeData.r / 4.0), 2.0) >= 1.0) distance = min(distance, mazeBox(nodeLocal - vec2(0.0, spacing.y * 0.5), vec2(${MAZE_HALL_HALF_WIDTH.toFixed(6)}, spacing.y * 0.5)));
     if (mod(floor(nodeData.r / 8.0), 2.0) >= 1.0) distance = min(distance, mazeBox(nodeLocal + vec2(0.0, spacing.y * 0.5), vec2(${MAZE_HALL_HALF_WIDTH.toFixed(6)}, spacing.y * 0.5)));
     float stairEnd = -depth * 0.14;
-    return min(distance, mazeBox(local - vec2(side * width * 0.22, (stairEnd + startZ) * 0.5), vec2(1.45, (stairEnd - startZ) * 0.5 + 0.2)));
+    return min(distance, mazeBox(local - vec2(side * width * 0.22, (stairEnd + startZ) * 0.5), vec2(${STAIR_WIDTH.toFixed(2)}, (stairEnd - startZ) * 0.5 + 0.2)));
   }
 `

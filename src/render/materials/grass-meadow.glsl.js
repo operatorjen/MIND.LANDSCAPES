@@ -9,7 +9,7 @@ export const grassMeadowDefaults = Object.freeze({
   mediumQualityThreshold: 0.74,
   highQualityThreshold: 0.96,
   nearDistance: 4,
-  farDistance: 24
+  farDistance: 21
 })
 
 const glslFloat = (value) => Number(value).toFixed(4)

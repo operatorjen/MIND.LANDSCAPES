@@ -29,23 +29,25 @@ export const lightingGlsl = `
     BarkContourSample barkSample;
     ConcreteAggregateSample concreteSample;
     float courtyardPlaster = courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE);
+    float courtyardRock = courtyardMaterialMatch(material, MATERIAL_COURTYARD_ROCK);
     if (material > MATERIAL_TERRAIN_MAX && material < MATERIAL_BARK_MAX) {
       normal = barkContourNormal(position, normal, surfaceDetail, microDetail, barkSample);
     }
     if (material >= MATERIAL_CONCRETE && material < MATERIAL_CONCRETE_MAX) {
       if (courtyardPlaster > 0.5) normal = courtyardPlasterNormal(position, normal, surfaceDetail);
+      else if (courtyardRock > 0.5) normal = courtyardRockNormal(position, normal, surfaceDetail);
       else normal = concreteAggregateNormal(position, normal, surfaceDetail, microDetail, concreteSample);
     }
-    if (((material > MATERIAL_BARK_MAX && material < MATERIAL_FOLIAGE_DETAIL_MAX)
-      || courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE) > 0.5) && surfaceDetail > 0.002) {
-      float leafRipple = sin(position.x * 17.0 + position.y * 11.0 + uSeed) * sin(position.z * 19.0 - position.y * 7.0);
-      vec3 leafGrain = vec3(
-        sin(position.y * 23.0 + position.z * 8.0),
-        leafRipple,
-        cos(position.y * 21.0 - position.x * 9.0)
-      );
-      normal = normalize(normal + leafGrain * leafRipple * surfaceDetail * 0.075);
+    float treeLeafDetail = material > MATERIAL_BARK_MAX && material < MATERIAL_FOLIAGE_MAX ? microDetail : 0.0;
+    float courtyardLeafDetail = courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE) * surfaceDetail;
+    #if SHADER_QUALITY_LEVEL >= 1
+    float leafSurfaceDetail = max(treeLeafDetail, courtyardLeafDetail);
+    if (leafSurfaceDetail > 0.002) {
+      vec3 leafWave = sin(position.zxy * vec3(18.0, 23.0, 20.0) + position.yzx * vec3(7.0, -9.0, 11.0) + uSeed);
+      float leafGrain = dot(leafWave, vec3(0.36, 0.29, 0.35));
+      normal = normalize(normal + leafWave * leafGrain * leafSurfaceDetail * 0.09);
     }
+    #endif
     normal = petalMicroNormal(position, normal, material);
     float diffuse = pow(max(dot(normal, lightDirection), 0.0), 1.0 + uLightDrama * 1.35);
     vec3 surface;
@@ -56,6 +58,8 @@ export const lightingGlsl = `
       surface = courtyardSoilColor(position);
     } else if (courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE) > 0.5) {
       surface = courtyardStoneColor(position, geometricNormal);
+    } else if (courtyardRock > 0.5) {
+      surface = courtyardRockColor(position, normal);
     } else if (material < MATERIAL_TERRAIN_MAX) {
       float slope = 1.0 - normal.y;
       vec2 biomePoint = foldedPoint(position.xz);
@@ -167,19 +171,42 @@ export const lightingGlsl = `
       else if (treeSpecies < 0.5) foliage = mix(foliage, vec3(0.24, 0.29, 0.12) + uAccentColor * 0.12, 0.32);
       else foliage = mix(foliage, vec3(0.08, 0.22, 0.1) + uGroundColor * 0.12, treeSpecies * 0.18);
       foliage = mix(foliage * 0.7, foliage * 1.18, leafPattern);
-      if (surfaceDetail > 0.002) {
-        vec2 leafCell = floor(position.xz * 5.8 + position.y * vec2(1.9, -1.4));
-        float leafIdentity = hash21(leafCell + uSeed * 0.37);
-        float midrib = pow(abs(sin(position.y * 12.0 + position.x * 4.8 + position.z * 2.6)), 22.0);
-        float sideVeins = pow(abs(sin(position.y * 27.0 - position.x * 8.0 + position.z * 6.0)), 34.0);
-        float leafFlecks = smoothstep(0.74, 0.94, noise21(position.xz * 12.0 + position.y + uSeed));
-        vec3 detailedLeaf = foliage * mix(0.82, 1.16, leafIdentity);
-        detailedLeaf = mix(detailedLeaf, detailedLeaf * 0.7 + uSkyColor * 0.12, clamp(midrib * 0.72 + sideVeins * 0.34, 0.0, 0.82));
-        detailedLeaf += uAccentColor * leafFlecks * 0.08;
-        foliage = mix(foliage, detailedLeaf, surfaceDetail * 0.8);
+      float growthAge = fract(treeSpecies * 4.73 + leafPattern * 0.41 + pattern * 0.23);
+      float oldGrowth = smoothstep(0.3, 0.78, growthAge);
+      vec3 warmLeaf = mix(vec3(0.48, 0.075, 0.025), vec3(0.82, 0.31, 0.045), growthAge);
+      foliage = mix(foliage, warmLeaf, 0.08 + oldGrowth * mix(0.34, 0.58, autumn));
+      float berryIdentity = 0.5 + 0.5 * sin(
+        dot(position, vec3(1.07, 0.83, 0.91)) + treeSpecies * 8.0 + uSeed * 0.017
+      );
+      vec3 pomegranate = vec3(1.0, 0.012, 0.055);
+      vec3 hotPink = vec3(1.48, 0.035, 0.54);
+      vec3 mutedGreen = vec3(0.24, 0.5, 0.23);
+      vec3 berryColor = mix(pomegranate, hotPink, smoothstep(0.08, 0.56, berryIdentity));
+      berryColor = mix(berryColor, mutedGreen, smoothstep(0.48, 0.94, berryIdentity));
+      float berryDetail = smoothstep(0.18, 0.78, surfaceDetail);
+      foliage = mix(foliage, berryColor, berryDetail * 0.97);
+      vec3 foliageView = normalize(cameraPosition - position);
+      float sphereExterior = clamp(
+        max(dot(normal, lightDirection), 0.0) * 0.62
+          + max(dot(normal, foliageView), 0.0) * 0.24
+          + max(normal.y, 0.0) * 0.14,
+        0.0,
+        1.0
+      );
+      float sphereVolume = mix(0.52, 1.2, smoothstep(0.08, 0.88, sphereExterior));
+      foliage *= mix(1.0, sphereVolume, microDetail * 0.86);
+      #if SHADER_QUALITY_LEVEL >= 1
+      if (microDetail > 0.002) {
+        float berryBloom = noise21(position.xz * 7.2 + position.y * vec2(2.1, -1.7) + uSeed);
+        float berryBlush = smoothstep(0.34, 0.82, berryBloom + sphereExterior * 0.22);
+        vec3 detailedBerry = mix(foliage * 0.78, foliage * 1.13, berryBlush);
+        detailedBerry = mix(detailedBerry, vec3(0.92, 0.72, 0.68), pow(sphereExterior, 6.0) * 0.16);
+        foliage = mix(foliage, detailedBerry, microDetail * 0.72);
       }
+      #endif
       vec3 spectralLeaf = mix(uAccentColor.gbr, uSkyColor.brg, leafPattern);
-      surface = mix(foliage, spectralLeaf, clamp(uPsychedelicIntensity * 0.32, 0.0, 0.64));
+      float spectralAmount = clamp(uPsychedelicIntensity * 0.18, 0.0, 0.38) * mix(1.0, 0.18, berryDetail);
+      surface = mix(foliage, spectralLeaf, spectralAmount);
       surface += pow(leafPattern, 8.0) * uRitualIntensity * uAccentColor * 0.18;
     } else if (material < MATERIAL_SUCCULENT_MAX) {
       float spacing = TREE_CELL;
@@ -303,12 +330,13 @@ export const lightingGlsl = `
       surface *= 1.0 - panelSeam * 0.38;
       surface += vec3(0.42, 0.48, 0.28) * fluorescent * (0.18 + abs(normal.y) * 0.32);
     } else {
-      float portalTime = uTime * uMotionScale;
+      float portalTime = mod(uTime * uMotionScale, 628.31854);
       float breath = sin(portalTime * 1.22) * 0.72 + sin(portalTime * 2.44 - 1.1) * 0.2;
       vec3 spinningNormal = normal;
       spinningNormal.xz = rotate2(portalTime * 0.22) * spinningNormal.xz;
       spinningNormal.xy = rotate2(-portalTime * 0.13) * spinningNormal.xy;
-      float crawl = fbm(spinningNormal.xy * 3.8 + vec2(spinningNormal.z * 1.45, -portalTime * 0.12));
+      vec2 portalFlow = vec2(sin(portalTime * 0.12), cos(portalTime * 0.12)) * 1.35;
+      float crawl = fbm(spinningNormal.xy * 3.8 + vec2(spinningNormal.z * 1.45, 0.0) + portalFlow);
       float membrane = sin(spinningNormal.y * 12.0 - spinningNormal.x * 5.0 + crawl * 5.2);
       membrane += sin((spinningNormal.x - spinningNormal.z) * 15.0 + portalTime * 0.24) * 0.55;
       float veins = smoothstep(0.72, 0.97, 0.5 + 0.5 * sin(membrane * 2.4 + crawl * 8.0));
@@ -335,7 +363,8 @@ export const lightingGlsl = `
 
     if (courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE) < 0.5
       && courtyardMaterialMatch(material, MATERIAL_COURTYARD_SOIL) < 0.5
-      && courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE) < 0.5)
+      && courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE) < 0.5
+      && courtyardRock < 0.5)
       surface = personalArt(surface, position, normal, material);
     float ambientDay = smoothstep(0.12, 0.62, daylight);
     float ambient = max(0.09, (0.24 + normal.y * 0.34 - uLightDrama * 0.07) * mix(0.34, 1.0, ambientDay));
@@ -344,7 +373,7 @@ export const lightingGlsl = `
     vec3 lighting = vec3(ambient) + diffuse * lightColor * (0.52 + daylight * 0.58) * (1.0 + uLightDrama * 0.48);
     float courtyardLight = max(
       courtyardMaterialMatch(material, MATERIAL_COURTYARD_STONE),
-      max(courtyardMaterialMatch(material, MATERIAL_COURTYARD_SOIL), courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE))
+      max(courtyardRock, max(courtyardMaterialMatch(material, MATERIAL_COURTYARD_SOIL), courtyardMaterialMatch(material, MATERIAL_COURTYARD_FOLIAGE)))
     );
     if ((material > MATERIAL_TERRAIN_MAX && material < MATERIAL_BARK_MAX
       || material > MATERIAL_SUCCULENT_MAX && material < MATERIAL_GRASS_MAX)) {
@@ -389,7 +418,15 @@ export const lightingGlsl = `
     vec3 color = skyColor(reflected);
     // A static plane with a bounded reflection march, including on Low.
     float travel = 0.06;
+    #if SHADER_QUALITY_LEVEL == 0
+    float courtyardReflectionSteps = 12.0;
+    #elif SHADER_QUALITY_LEVEL == 1
+    float courtyardReflectionSteps = 20.0;
+    #else
+    float courtyardReflectionSteps = 28.0;
+    #endif
     for (int i = 0; i < 40; i++) {
+      if (float(i) >= courtyardReflectionSteps) break;
       vec3 hit = surface + vec3(0.0, 0.035, 0.0) + reflected * travel;
       vec3 distances; float material;
       float distance = sampleScene(hit, material, distances);
@@ -405,16 +442,15 @@ export const lightingGlsl = `
     return mix(vec3(0.055, 0.075, 0.07), color, 0.96);
   }
 
-  vec2 waterSurfaceGradient(vec2 point, float eyeDistance) {
+  vec2 waterSurfaceGradient(vec2 point, float detail, float micro) {
+    if (detail <= 0.002) return vec2(0.0);
     float time = uTime * uMotionScale;
-    float detail = 1.0 - smoothstep(8.0, 52.0 * uDetailScale, eyeDistance);
-    float micro = 1.0 - smoothstep(2.5, 17.0 * uDetailScale, eyeDistance);
     vec2 a = normalize(vec2(0.92, 0.38));
     vec2 b = normalize(vec2(-0.34, 0.94));
     float wind = 0.65 + uWind * 0.45;
     vec2 gradient = a * cos(dot(point, a) * 0.19 + time * 0.28 * wind) * 0.038;
     gradient += b * cos(dot(point, b) * 0.31 - time * 0.37 * wind) * 0.026;
-    gradient *= mix(0.48, 1.0, detail);
+    gradient *= detail;
     if (detail > 0.002) {
       vec2 c = normalize(vec2(0.68, -0.73));
       float drift = sin(dot(point, b) * 0.23 + time * 0.14) * 0.65;
@@ -436,12 +472,17 @@ export const lightingGlsl = `
     float waterDetail = 1.0 - smoothstep(10.0, 82.0 * uDetailScale, distanceFromCamera);
     float rippleDetail = 1.0 - smoothstep(8.0, 52.0 * uDetailScale, distanceFromCamera);
     float microDetail = 1.0 - smoothstep(2.5, 17.0 * uDetailScale, distanceFromCamera);
-    vec2 gradient = waterSurfaceGradient(position.xz, distanceFromCamera);
+    vec2 gradient = waterSurfaceGradient(position.xz, rippleDetail, microDetail);
     vec3 normal = normalize(vec3(-gradient.x, 1.0, -gradient.y));
     vec3 reflected = reflect(direction, normal);
     float fresnel = 0.02 + 0.98 * pow(1.0 - max(dot(-direction, normal), 0.0), 5.0);
 
-    vec3 reflectionColor = skyColor(reflected);
+    float reflectionDetail = 1.0 - smoothstep(24.0, 70.0 * uDetailScale, distanceFromCamera);
+    vec3 hazeColor = aerialHazeColor(direction);
+    vec3 reflectionColor = hazeColor;
+    if (reflectionDetail > 0.002) {
+      reflectionColor = mix(reflectionColor, skyColor(reflected), reflectionDetail);
+    }
     #if ENABLE_SCENE_REFLECTIONS == 1
     vec3 reflectedPosition;
     float reflectedMaterial;
@@ -462,6 +503,6 @@ export const lightingGlsl = `
     float glint = pow(max(dot(reflected, sunDirection()), 0.0), 280.0) * (0.45 + rippleLight * 0.55);
     color += (highlight * 1.55 + glint * 3.2 * microDetail) * vec3(1.0, 0.79, 0.5);
     float fog = aerialPerspective(distanceFromCamera);
-    return mix(color, aerialHazeColor(direction), fog);
+    return mix(color, hazeColor, fog);
   }
 `
