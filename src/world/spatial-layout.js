@@ -1,4 +1,5 @@
 import { mazeRearMargin } from '../config/navigation.js'
+import { isCultivationCell, plantingCenter } from './ecology-layout.js'
 import { QUALITY_PROFILES } from '../config/rendering.js'
 import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, mazeRouteAt, portalArrival, hashMaze, courtyardExitForLayout } from './maze.js'
 import {
@@ -21,6 +22,8 @@ import {
 const DOORWAY_TOLERANCE = 0.12
 const NEIGHBORHOOD_RADIUS = 1
 const STRUCTURE_CELL_HALF = STRUCTURE_CELL_SIZE * 0.5
+const PLANTING_GRADE_INNER = 3.8
+const PLANTING_GRADE_OUTER = 7.2
 
 export function terrainHeightAt(x, z, settings, seed, cache) {
   if (!cache) return computeTerrainHeightAt(x, z, settings, seed)
@@ -28,7 +31,15 @@ export function terrainHeightAt(x, z, settings, seed, cache) {
 }
 
 function computeTerrainHeightAt(x, z, settings, seed, cache) {
-  const terrainHeight = terrainBaseHeightAt(x, z, settings, seed)
+  let terrainHeight = terrainBaseHeightAt(x, z, settings, seed)
+  const cellX = Math.floor((x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
+  const cellZ = Math.floor((z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
+  if (isCultivationCell(cellX, cellZ, seed)) {
+    const center = plantingCenter(cellX, cellZ, seed)
+    const centerHeight = Math.max(terrainBaseHeightAt(center.x, center.z, settings, seed), settings.water.level + 0.62)
+    const distance = Math.hypot(x - center.x, z - center.z)
+    terrainHeight = mix(terrainHeight, centerHeight, 1 - smoothstep(PLANTING_GRADE_INNER, PLANTING_GRADE_OUTER, distance))
+  }
   return gradeStructureGroundAt(x, z, terrainHeight, settings, seed, cache)
 }
 
@@ -296,6 +307,10 @@ function computeVegetationAt(cellX, cellZ, center, settings, shaderSeed, seed, c
 
   const structureCellX = Math.floor((center.x + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
   const structureCellZ = Math.floor((center.z + STRUCTURE_CELL_HALF) / STRUCTURE_CELL_SIZE)
+  if (isCultivationCell(structureCellX, structureCellZ, seed)) {
+    const pocket = plantingCenter(structureCellX, structureCellZ, seed)
+    if (Math.hypot(center.x - pocket.x, center.z - pocket.z) < 8.2) return null
+  }
   const structure = structureLayout(structureCellX, structureCellZ, settings, seed, cache)
   if (structure && Math.hypot(center.x - structure.centerX, center.z - structure.centerZ) < STRUCTURE_VEGETATION_CLEARANCE) return null
   const ground = terrainHeightAt(center.x, center.z, settings, seed, cache)
@@ -424,6 +439,7 @@ export function structureLayout(cellX, cellZ, settings, seed, cache) {
 }
 
 function computeStructureLayout(cellX, cellZ, settings, seed, cache) {
+  if (isCultivationCell(cellX, cellZ, seed)) return null
   const shaderSeed = gpuMultiply(seed, WORLD_SEED_SCALE)
   const presence = Math.min(0.82, 0.1 + settings.generation.structures * 0.68 + settings.generation.mechanicalIntensity * 0.16 + settings.generation.ritualIntensity * 0.12)
   const randomX = gpuAdd(cellX, gpuMultiply(shaderSeed, 0.043))

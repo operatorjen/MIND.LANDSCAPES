@@ -29,9 +29,9 @@ test('underground courtyards open a sky shaft only underground and use dedicated
   assert.match(architectureGlsl, /courtyardSoilBand/)
   assert.match(architectureGlsl, /courtyardRockDistance/)
   assert.match(architectureGlsl, /MATERIAL_COURTYARD_ROCK/)
-  assert.match(lightingGlsl, /float courtyardReflectionSteps = 12\.0/)
-  assert.match(lightingGlsl, /float courtyardReflectionSteps = 20\.0/)
-  assert.match(lightingGlsl, /float courtyardReflectionSteps = 28\.0/)
+  assert.match(lightingGlsl, /const int courtyardReflectionSteps = 8/)
+  assert.match(lightingGlsl, /const int courtyardReflectionSteps = 20/)
+  assert.match(lightingGlsl, /const int courtyardReflectionSteps = 28/)
 })
 
 test('portal motion uses a bounded periodic phase and flow field', () => {

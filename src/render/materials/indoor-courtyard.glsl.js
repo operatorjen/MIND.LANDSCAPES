@@ -9,25 +9,19 @@ export const indoorCourtyardGlsl = `
       texture2D(uConcreteHeightMap, position.xy * 0.85).r), weights);
   }
 
+  vec2 courtyardPlasterGradient(vec2 position) {
+    float base = texture2D(uConcreteHeightMap, position * 0.85).r;
+    return vec2(texture2D(uConcreteHeightMap, (position + vec2(0.035, 0.0)) * 0.85).r - base,
+      texture2D(uConcreteHeightMap, (position + vec2(0.0, 0.035)) * 0.85).r - base);
+  }
+
   vec3 courtyardPlasterNormal(vec3 position, vec3 normal, float detail) {
     vec3 weights = pow(abs(normal), vec3(4.0));
     weights /= max(dot(weights, vec3(1.0)), 0.001);
     vec3 gradient = vec3(0.0);
-    if (weights.x > 0.0) {
-      float base = texture2D(uConcreteHeightMap, position.zy * 0.85).r;
-      gradient.z += (texture2D(uConcreteHeightMap, (position.zy + vec2(0.035, 0.0)) * 0.85).r - base) * weights.x;
-      gradient.y += (texture2D(uConcreteHeightMap, (position.zy + vec2(0.0, 0.035)) * 0.85).r - base) * weights.x;
-    }
-    if (weights.y > 0.0) {
-      float base = texture2D(uConcreteHeightMap, position.xz * 0.85).r;
-      gradient.x += (texture2D(uConcreteHeightMap, (position.xz + vec2(0.035, 0.0)) * 0.85).r - base) * weights.y;
-      gradient.z += (texture2D(uConcreteHeightMap, (position.xz + vec2(0.0, 0.035)) * 0.85).r - base) * weights.y;
-    }
-    if (weights.z > 0.0) {
-      float base = texture2D(uConcreteHeightMap, position.xy * 0.85).r;
-      gradient.x += (texture2D(uConcreteHeightMap, (position.xy + vec2(0.035, 0.0)) * 0.85).r - base) * weights.z;
-      gradient.y += (texture2D(uConcreteHeightMap, (position.xy + vec2(0.0, 0.035)) * 0.85).r - base) * weights.z;
-    }
+    if (weights.x > 0.0) gradient.zy += courtyardPlasterGradient(position.zy) * weights.x;
+    if (weights.y > 0.0) gradient.xz += courtyardPlasterGradient(position.xz) * weights.y;
+    if (weights.z > 0.0) gradient.xy += courtyardPlasterGradient(position.xy) * weights.z;
     gradient /= 0.035;
     return normalize(normal - (gradient - normal * dot(normal, gradient)) * detail * 0.17);
   }

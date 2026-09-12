@@ -53,6 +53,7 @@ export const architectureGlsl = `
 
   bool courtyardCoordinates(vec3 position, out vec3 point, out vec2 halfSize) {
     vec2 cell = floor((position.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    if (cultivationCell(cell)) return false;
     vec2 center = structureCenterForCell(cell);
     float ground = terrainFoundation(center);
     if (position.y > ground - 0.9) return false;
@@ -209,6 +210,7 @@ export const architectureGlsl = `
   float courtyardWaterDistance(vec3 origin, vec3 direction) {
     if (direction.y >= -0.0001) return -1.0;
     vec2 cell = floor((origin.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    if (cultivationCell(cell)) return -1.0;
     if (hash21(cell + uSeed * 0.043) > structurePresence()) return -1.0;
     vec2 center = structureCenterForCell(cell);
     float ground = terrainFoundation(center);
@@ -237,8 +239,9 @@ export const architectureGlsl = `
   float architectureComponentDistance(vec3 point, bool includeFlowers, out float material) {
     float spacing = STRUCTURE_CELL;
     vec2 cell = floor((point.xz + spacing * 0.5) / spacing);
-    float random = hash21(cell + uSeed * 0.043);
     material = MATERIAL_CONCRETE;
+    if (cultivationCell(cell)) return 1000.0;
+    float random = hash21(cell + uSeed * 0.043);
     if (random > structurePresence()) return 1000.0;
 
     vec2 center = structureCenterForCell(cell);
@@ -553,6 +556,8 @@ export const architectureGlsl = `
     }
     float undergroundMass = 1000.0;
     float portalSurface = 0.0;
+    float seedBagMass = 1000.0;
+    float seedBagSurface = 0.0;
     float courtyardFlowerMaterial = MATERIAL_COURTYARD_FOLIAGE;
     float courtyardExitMass = 1000.0;
     float courtyardExitSurface = 0.0;
@@ -582,6 +587,14 @@ export const architectureGlsl = `
       );
       float shell = max(envelope, -cavity);
       shell = max(shell, -stairVoid);
+      vec4 ecology = ecologyDataForCell(cell);
+      if (ecology.b < 0.5 && ecology.a > 0.0) {
+        vec3 bagPoint = local - vec3(stairX, -UNDERGROUND_DESCENT + 0.92, stairEnd - 2.4);
+        seedBagMass = ellipsoidDistance(bagPoint, vec3(0.34, 0.42, 0.26));
+        seedBagMass = min(seedBagMass, ellipsoidDistance(bagPoint - vec3(0.0, 0.38, 0.0), vec3(0.16, 0.15, 0.14)));
+        seedBagSurface = step(seedBagMass, shell);
+        shell = min(shell, seedBagMass);
+      }
       float marker = 1000.0;
       if (courtyardNode) {
         vec2 spacing = vec2(width * 0.17, (depth * 0.64 - 1.2) / 4.0);
@@ -652,6 +665,7 @@ export const architectureGlsl = `
     float innerSurface = step(outer, -inner);
     if (undergroundSurface > 0.5) {
       material = portalSurface > 0.5 ? MATERIAL_PORTAL
+        : seedBagSurface > 0.5 ? MATERIAL_SEED_BAG
         : courtyardExitSurface > 0.5 ? MATERIAL_COURTYARD_EXIT
         : courtyardRockSurface > 0.5 ? MATERIAL_COURTYARD_ROCK
         : courtyardFoliageSurface > 0.5 ? courtyardFlowerMaterial
@@ -665,6 +679,11 @@ export const architectureGlsl = `
   }
 
   float architectureDistance(vec3 point, out float material) {
-    return architectureComponentDistance(point, true, material);
+    float architectureMaterial;
+    float architecture = architectureComponentDistance(point, true, architectureMaterial);
+    float plantMaterial;
+    float plant = plantedDistance(point, plantMaterial);
+    material = plant < architecture ? plantMaterial : architectureMaterial;
+    return min(plant, architecture);
   }
 `

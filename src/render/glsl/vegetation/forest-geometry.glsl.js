@@ -10,9 +10,10 @@ export const forestGeometryGlsl = `  float forestDistance(vec3 point, float terr
     if (densityRoll > max(uPlantDensity, uTreeDensity)) return 1000.0;
 
     vec2 structureCell = floor((center + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    if (cultivationCell(structureCell) && length(center - plantingCenterForCell(structureCell)) < 8.2) return 1000.0;
     vec2 structureCenter = structureCenterForCell(structureCell);
     float structureRandom = hash21(structureCell + uSeed * 0.043);
-    if (structureRandom < structurePresence() && length(center - structureCenter) < STRUCTURE_CLEARANCE) return 1000.0;
+    if (!cultivationCell(structureCell) && structureRandom < structurePresence() && length(center - structureCenter) < STRUCTURE_CLEARANCE) return 1000.0;
 
     float moisture = exp(-abs(center.x - riverCenter(center.y)) * 0.08);
     float cluster = noise21(center * 0.018 + uSeed * 0.031);

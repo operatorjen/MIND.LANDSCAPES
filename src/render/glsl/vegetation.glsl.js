@@ -3,6 +3,7 @@ import { foliageGeometryGlsl } from './vegetation/foliage.glsl.js'
 import { vegetationPlacementGlsl } from './vegetation/placement.glsl.js'
 import { grassGeometryGlsl } from './vegetation/grass-geometry.glsl.js'
 import { forestGeometryGlsl } from './vegetation/forest-geometry.glsl.js'
+import { plantedGeometryGlsl } from './vegetation/planted-geometry.glsl.js'
 
 export const vegetationGlsl = `
 ${[
@@ -10,6 +11,7 @@ ${[
   foliageGeometryGlsl,
   vegetationPlacementGlsl,
   grassGeometryGlsl,
-  forestGeometryGlsl
+  forestGeometryGlsl,
+  plantedGeometryGlsl
 ].join('\n\n')}
 `

@@ -4,7 +4,7 @@ export const QUALITY_MODES = ['auto', ...QUALITY_LEVELS]
 export const QUALITY_PROFILES = {
   low: {
     name: 'Low',
-    pixelRatio: 0.8,
+    pixelRatio: 0.72,
     raySteps: 100,
     viewDistance: 190,
     detailScale: 0.68,

@@ -1,13 +1,23 @@
+import { SEED_TYPES } from '../world/ecology.js'
+
 const JSON_INDENT = 2
 const SPEED_DECIMALS = 2
 
 export class Interface {
-  constructor(world, quality) {
+  constructor(world, quality, ecology) {
     this.world = world
     this.quality = quality
+    this.ecology = ecology
     this.status = document.querySelector('#status')
     this.overlay = document.querySelector('#drop-overlay')
     this.dialog = document.querySelector('#config-dialog')
+    this.inventoryDialog = document.querySelector('#inventory-dialog')
+    this.seedList = document.querySelector('#seed-list')
+    this.ecologyStats = document.querySelector('#ecology-stats')
+    this.interaction = document.querySelector('#interaction')
+    this.plantingBeacons = document.querySelector('#planting-beacons')
+    this.beaconElements = new Map()
+    this.noticeElement = document.querySelector('#notice')
     this.editor = document.querySelector('#config-editor')
     this.message = document.querySelector('#config-message')
     this.memoryList = document.querySelector('#memory-list')
@@ -23,6 +33,7 @@ export class Interface {
     this.listeners = []
     this.bindActions()
     this.unsubscribeQuality = this.quality.subscribe((profile) => this.renderQuality(profile))
+    this.unsubscribeEcology = this.ecology.subscribe((document) => this.renderEcology(document))
   }
 
   listen(target, type, listener, options) {
@@ -32,6 +43,7 @@ export class Interface {
 
   bindActions() {
     this.listen(document.querySelector('#config-button'), 'click', () => this.open())
+    this.listen(document.querySelector('#inventory-button'), 'click', () => this.openInventory())
     this.listen(document.querySelector('#fullscreen-button'), 'click', () => this.toggleFullscreen())
     this.listen(document.querySelector('#choose-button'), 'click', () => this.contentInput.click())
     this.listen(document.querySelector('#apply-button'), 'click', () => this.apply())
@@ -43,6 +55,10 @@ export class Interface {
     this.listen(this.memoryList, 'click', (event) => {
       const button = event.target.closest('[data-remove]')
       if (button) this.world.remove(button.dataset.remove)
+    })
+    this.listen(this.seedList, 'click', (event) => {
+      const button = event.target.closest('[data-seed-type]')
+      if (button) this.ecology.selectSeed(button.dataset.seedType)
     })
     this.listen(window, 'keydown', (event) => {
       if (event.code === 'KeyC' && !(event.target instanceof HTMLTextAreaElement)) this.open()
@@ -147,8 +163,95 @@ export class Interface {
     this.qualityDescription.textContent = `${mode} · ${profile.name} active${motion}`
   }
 
+  renderEcology(ecologyDocument) {
+    this.seedList.replaceChildren()
+    for (const type of SEED_TYPES) {
+      const count = ecologyDocument.inventory[type.id]
+      const button = document.createElement('button')
+      button.type = 'button'
+      button.className = 'seed-card'
+      button.dataset.seedType = type.id
+      button.dataset.selected = String(ecologyDocument.selectedSeed === type.id)
+      button.dataset.empty = String(count === 0)
+      const swatch = document.createElement('span')
+      swatch.className = 'seed-swatch'
+      swatch.style.background = type.color
+      const heading = document.createElement('strong')
+      heading.textContent = type.label
+      const quantity = document.createElement('span')
+      quantity.className = 'seed-quantity'
+      const planted = ecologyDocument.stats.plantedByType[type.id]
+      const found = ecologyDocument.stats.collectedByType[type.id]
+      quantity.textContent = count ? `${count} available · ${planted} planted` : found ? `0 available · ${planted} planted` : 'Not discovered'
+      const description = document.createElement('small')
+      description.textContent = type.description
+      button.append(swatch, heading, quantity, description)
+      this.seedList.append(button)
+    }
+    const stats = [
+      ['Bags found', ecologyDocument.stats.bagsCollected],
+      ['Seeds planted', ecologyDocument.stats.seedsPlanted],
+      ['Fully grown', ecologyDocument.stats.plantsMatured],
+      ['Sunlight gathered', `${Math.floor(ecologyDocument.stats.sunlightSeconds / 60)} min`]
+    ]
+    this.ecologyStats.replaceChildren(...stats.flatMap(([label, value]) => {
+      const term = document.createElement('dt')
+      term.textContent = label
+      const detail = document.createElement('dd')
+      detail.textContent = value
+      return [term, detail]
+    }))
+  }
+
   open() {
     if (!this.dialog.open) this.dialog.showModal()
+  }
+
+  openInventory() {
+    if (!this.inventoryDialog.open) this.inventoryDialog.showModal()
+  }
+
+  setInteraction(message) {
+    this.interaction.textContent = message
+  }
+
+  setPlantingBeacons(beacons) {
+    const active = new Set(beacons.map(({ id }) => id))
+    for (const [id, element] of this.beaconElements) {
+      if (active.has(id)) continue
+      element.remove()
+      this.beaconElements.delete(id)
+    }
+    for (const beacon of beacons) {
+      let element = this.beaconElements.get(beacon.id)
+      if (!element) {
+        element = document.createElement('div')
+        element.className = 'planting-beacon'
+        const mark = document.createElement('span')
+        mark.className = 'beacon-mark'
+        const distance = document.createElement('span')
+        distance.className = 'beacon-distance'
+        element.append(mark, distance)
+        this.plantingBeacons.append(element)
+        this.beaconElements.set(beacon.id, element)
+      }
+      element.style.left = `${beacon.x}px`
+      element.style.top = `${beacon.y}px`
+      element.querySelector('.beacon-distance').textContent = beacon.planted
+        ? `${beacon.label} · ${Math.round(beacon.distance)} m`
+        : `${Math.round(beacon.distance)} m`
+      element.classList.toggle('edge', beacon.edge)
+      element.classList.toggle('known', beacon.known)
+      element.classList.toggle('planted', beacon.planted)
+    }
+    this.plantingBeacons.setAttribute('aria-hidden', String(!beacons.length))
+  }
+
+  notify(message) {
+    this.noticeElement.textContent = message
+    this.noticeElement.classList.add('visible')
+    clearTimeout(this.noticeTimer)
+    this.noticeTimer = setTimeout(() => this.noticeElement.classList.remove('visible'), 4200)
   }
 
   setStatus(message) {
@@ -183,6 +286,8 @@ export class Interface {
 
   dispose() {
     this.unsubscribeQuality?.()
+    this.unsubscribeEcology?.()
+    clearTimeout(this.noticeTimer)
     for (const [target, type, listener, options] of this.listeners) {
       target.removeEventListener(type, listener, options)
     }

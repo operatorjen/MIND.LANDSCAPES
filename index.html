@@ -32,6 +32,7 @@
 
       <nav class="actions" aria-label="World actions">
         <button id="fullscreen-button" class="quiet-button" type="button">Fullscreen</button>
+        <button id="inventory-button" class="quiet-button" type="button">Seeds</button>
         <button id="config-button" class="quiet-button" type="button">World</button>
       </nav>
 
@@ -40,7 +41,11 @@
         <button id="choose-button" class="choose-button" type="button">Choose files</button>
         <input id="content-input" type="file" accept="image/*,.txt,.md,text/plain,text/markdown" multiple hidden>
       </section>
+      <p id="interaction" class="interaction" aria-live="polite"></p>
+      <div id="planting-beacons" class="planting-beacons" aria-hidden="true"></div>
     </main>
+
+    <div id="notice" class="notice" role="status" aria-live="assertive"></div>
 
     <div id="drop-overlay" class="drop-overlay" aria-hidden="true">
     </div>
@@ -116,6 +121,21 @@
           <button id="export-button" class="text-button" type="button">Export JSON</button>
           <button id="apply-button" class="primary-button" type="button">Apply changes</button>
         </footer>
+      </form>
+    </dialog>
+
+    <dialog id="inventory-dialog" class="inventory-dialog">
+      <form method="dialog" class="inventory-shell">
+        <header class="dialog-header">
+          <div>
+            <p class="eyebrow">Collected seed bags</p>
+            <h2>Seed inventory</h2>
+          </div>
+          <button class="icon-button" value="close" aria-label="Close seed inventory">×</button>
+        </header>
+        <p class="inventory-help">Select a seed, then press E while standing in highlighted planting ground.</p>
+        <div id="seed-list" class="seed-list"></div>
+        <dl id="ecology-stats" class="ecology-stats"></dl>
       </form>
     </dialog>
 

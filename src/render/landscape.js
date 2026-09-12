@@ -7,6 +7,7 @@ import {
 import { fragmentShaders, vertexShader } from './shaders.js'
 import { ArtAtlas } from './art-atlas.js'
 import { MazeAtlas } from './maze-atlas.js'
+import { EcologyAtlas } from './ecology-atlas.js'
 import {
   createUniformState,
   createUniformTargets,
@@ -17,7 +18,7 @@ import {
 } from './uniforms.js'
 
 export class Landscape {
-  constructor(scene, camera, settings, seed, quality) {
+  constructor(scene, camera, settings, seed, quality, ecology) {
     this.camera = camera
     this.settings = settings
     this.seed = seed
@@ -26,6 +27,7 @@ export class Landscape {
     this.targets = state.targets
     this.uniforms = state.uniforms
     this.mazeAtlas = new MazeAtlas(this.uniforms)
+    this.ecologyAtlas = new EcologyAtlas(this.uniforms, ecology)
     this.artAtlas = new ArtAtlas(this.uniforms)
     this.concreteHeightMap = new THREE.TextureLoader().load('/assets/textures/concrete-height.png')
     this.concreteHeightMap.wrapS = THREE.ClampToEdgeWrapping
@@ -101,6 +103,7 @@ export class Landscape {
 
   update(time, delta) {
     this.mazeAtlas.update(this.camera.position, this.settings, this.seed)
+    this.ecologyAtlas.update(this.camera.position, this.settings, this.seed)
     this.mesh.position.copy(this.camera.position)
     this.uniforms.uTime.value = time
     const amount = 1 - Math.exp(-delta * UNIFORM_RESPONSE)
@@ -120,6 +123,7 @@ export class Landscape {
     this.mesh.removeFromParent()
     this.geometry.dispose()
     this.mazeAtlas.dispose()
+    this.ecologyAtlas.dispose()
     this.artAtlas.dispose()
     this.concreteHeightMap.dispose()
     this.sunlitOvergrowthMap.dispose()
@@ -129,6 +133,7 @@ export class Landscape {
 
   restoreContext() {
     this.mazeAtlas.texture.needsUpdate = true
+    this.ecologyAtlas.texture.needsUpdate = true
     this.artAtlas.texture.needsUpdate = true
     this.concreteHeightMap.needsUpdate = true
     this.sunlitOvergrowthMap.needsUpdate = true

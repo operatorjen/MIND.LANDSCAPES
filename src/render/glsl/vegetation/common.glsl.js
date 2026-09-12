@@ -10,12 +10,6 @@ export const vegetationCommonGlsl = `  float timelessPhase() {
     return fract(uTime * 0.0036 * uMotionScale + uSeed * 0.017);
   }
 
-  float segmentDistance(vec3 point, vec3 start, vec3 end) {
-    vec3 segment = end - start;
-    float position = clamp(dot(point - start, segment) / dot(segment, segment), 0.0, 1.0);
-    return length(point - start - segment * position);
-  }
-
   float taperedSegmentDistance(vec3 point, vec3 start, vec3 end, float startRadius, float endRadius) {
     vec3 segment = end - start;
     float position = clamp(dot(point - start, segment) / max(dot(segment, segment), 0.0001), 0.0, 1.0);
@@ -37,6 +31,12 @@ export const vegetationCommonGlsl = `  float timelessPhase() {
     float startRadius,
     float endRadius
   ) {
+    #if SHADER_QUALITY_LEVEL == 0
+    vec3 middle = windingPoint(start, end, arch, curl, 0.5);
+    float middleRadius = mix(startRadius, endRadius, 0.5);
+    return min(taperedSegmentDistance(point, start, middle, startRadius, middleRadius),
+      taperedSegmentDistance(point, middle, end, middleRadius, endRadius));
+    #else
     vec3 first = windingPoint(start, end, arch, curl, 0.34);
     vec3 second = windingPoint(start, end, arch, curl, 0.68);
     float firstRadius = mix(startRadius, endRadius, 0.34);
@@ -44,6 +44,7 @@ export const vegetationCommonGlsl = `  float timelessPhase() {
     float distance = taperedSegmentDistance(point, start, first, startRadius, firstRadius);
     distance = min(distance, taperedSegmentDistance(point, first, second, firstRadius, secondRadius));
     return min(distance, taperedSegmentDistance(point, second, end, secondRadius, endRadius));
+    #endif
   }
 
   vec3 branchGrowthBend(

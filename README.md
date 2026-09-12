@@ -2,11 +2,11 @@
 
 A persistent generative landscape shaped by images and text.
 
-![Landscape view](screenshots/screen-07.v.1.0.0.alpha.4.png)
+![Landscape view](screenshots/screen-13.v.1.0.0.alpha.6.png)
 
-![Hallway with portal sphere](screenshots/screen-08.v.1.0.0.alpha.4.png)
+![Hallway with portal sphere](screenshots/screen-14.v.1.0.0.alpha.6.png)
 
-![Indoor courtyard](screenshots/screen-09.v.1.0.0.alpha.4.png)
+![Indoor courtyard](screenshots/screen-15.v.1.0.0.alpha.6.png)
 
 ## Challenge
 

@@ -31,6 +31,7 @@ import { raymarchGlsl } from './glsl/raymarch.glsl.js'
 import { sceneGlsl } from './glsl/scene.glsl.js'
 import { terrainGlsl } from './glsl/terrain.glsl.js'
 import { mazeGlsl } from './glsl/maze.glsl.js'
+import { ecologyMapGlsl } from './glsl/ecology-map.glsl.js'
 import { vegetationGlsl } from './glsl/vegetation.glsl.js'
 import { materialGlsl } from './materials/catalog.js'
 
@@ -132,6 +133,7 @@ export function fragmentShaderForQuality(level = 'medium') {
     uniformDeclarations,
     coreGlsl,
     mazeGlsl,
+    ecologyMapGlsl,
     terrainGlsl,
     vegetationGlsl,
     architectureGlsl,

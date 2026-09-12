@@ -5,6 +5,9 @@ export const MATERIAL = Object.freeze({
   shrub: 2.72,
   succulent: 3.7,
   grass: 3.82,
+  moonbell: 3.828,
+  ribbonFern: 3.834,
+  emberThistle: 3.84,
   dahlia: 3.845,
   rhododendron: 3.88,
   rose: 3.915,
@@ -24,6 +27,7 @@ export const MATERIAL = Object.freeze({
   courtyardSoil: 12.18,
   courtyardFoliage: 12.32,
   courtyardExit: 12.43,
+  seedBag: 12.47,
   portal: 13
 })
 
@@ -55,6 +59,9 @@ const glslNames = {
   courtyardRock: 'MATERIAL_COURTYARD_ROCK',
   succulent: 'MATERIAL_SUCCULENT',
   grass: 'MATERIAL_GRASS',
+  moonbell: 'MATERIAL_MOONBELL',
+  ribbonFern: 'MATERIAL_RIBBON_FERN',
+  emberThistle: 'MATERIAL_EMBER_THISTLE',
   dahlia: 'MATERIAL_DAHLIA',
   rhododendron: 'MATERIAL_RHODODENDRON',
   rose: 'MATERIAL_ROSE',
@@ -71,6 +78,7 @@ const glslNames = {
   flooded: 'MATERIAL_FLOODED',
   liminal: 'MATERIAL_LIMINAL',
   courtyardSoil: 'MATERIAL_COURTYARD_SOIL',
+  seedBag: 'MATERIAL_SEED_BAG',
   portal: 'MATERIAL_PORTAL'
 }
 

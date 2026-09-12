@@ -119,6 +119,18 @@ export const lightingGlsl = `
       surface = mix(surface, hillPigment * (0.92 + grassSample.fiber * 0.12), hillWash * 0.74);
       float pigmentBand = 0.5 + 0.5 * sin(position.y * 1.7 + pattern * 6.0);
       surface = mix(surface, mix(uAccentColor, uSkyColor, pigmentBand), clamp(uPsychedelicIntensity * 0.34, 0.0, 0.62));
+      vec2 ecologyCell = floor((position.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+      if (cultivationCell(ecologyCell)) {
+        vec2 plantingCenter = plantingCenterForCell(ecologyCell);
+        float plantingDistance = length(position.xz - plantingCenter);
+        float plantingSoil = 1.0 - smoothstep(3.8, 5.25, plantingDistance);
+        vec3 livingSoil = mix(vec3(0.095, 0.065, 0.045), uGroundColor * 0.3, noise21(position.xz * 1.8 + uSeed) * 0.34);
+        surface = mix(surface, livingSoil, plantingSoil * 0.76);
+      }
+      float focusDistance = length(position.xz - uPlantingFocus.xy);
+      float focusFill = (1.0 - smoothstep(uPlantingFocus.z - 0.3, uPlantingFocus.z, focusDistance)) * uPlantingFocus.w;
+      float focusRing = (1.0 - smoothstep(0.0, 0.16, abs(focusDistance - uPlantingFocus.z + 0.2))) * uPlantingFocus.w;
+      surface = mix(surface, vec3(0.36, 0.78, 0.46), focusFill * 0.18 + focusRing * 0.62);
       if (dryStructureInterior(position)) {
         float stoneGrain = noise21(position.xz * 2.7 + uSeed);
         surface = mix(vec3(0.27, 0.29, 0.28), vec3(0.43, 0.435, 0.41), stoneGrain * 0.45 + 0.25);
@@ -228,7 +240,9 @@ export const lightingGlsl = `
       surface += ribs * vec3(0.17, 0.28, 0.08) * (0.32 + uChromaticIntensity * 0.14);
       surface = mix(surface, uAccentColor.gbr * 0.58, clamp(uPsychedelicIntensity * 0.16, 0.0, 0.32));
     } else if (material < MATERIAL_GRASS_MAX) {
-      surface = surrealFlowerColor(position, normal, material);
+      surface = material > MATERIAL_GRASS + 0.003 && material < MATERIAL_DAHLIA - 0.003
+        ? cultivatedPlantColor(position, normal, material)
+        : surrealFlowerColor(position, normal, material);
     } else if (material < MATERIAL_CONCRETE_MAX) {
       SunlitOvergrowthSample overgrowth = sampleSunlitOvergrowth(
         position,
@@ -318,6 +332,10 @@ export const lightingGlsl = `
       vec3 floodedStone = mix(vec3(0.025, 0.065, 0.075), vec3(0.08, 0.18, 0.19), wetPattern);
       floodedStone += mix(uAccentColor.brg, vec3(0.18, 0.38, 0.42), 0.55) * (0.5 + 0.5 * ripples) * floorFacing * 0.16;
       surface = mix(floodedStone, reflectedSky * 0.52 + vec3(0.025, 0.06, 0.07), (0.22 + grazing * 0.48) * mix(0.42, 1.0, floorFacing));
+    } else if (abs(material - MATERIAL_SEED_BAG) < 0.01) {
+      float fiber = noise21(position.xz * 17.0 + position.y * 9.0 + uSeed);
+      surface = mix(vec3(0.34, 0.19, 0.07), vec3(0.88, 0.66, 0.25), fiber * 0.42 + max(normal.y, 0.0) * 0.34);
+      surface += vec3(0.18, 0.34, 0.12) * (0.35 + 0.65 * sin(uTime * 2.0) * sin(uTime * 2.0));
     } else if (material < MATERIAL_LIMINAL_MAX) {
       float roomCellX = abs(fract(position.x * 0.18) - 0.5);
       float roomCellZ = abs(fract(position.z * 0.18) - 0.5);
@@ -416,17 +434,15 @@ export const lightingGlsl = `
     vec3 surface = origin + direction * distanceFromCamera;
     vec3 reflected = reflect(direction, vec3(0.0, 1.0, 0.0));
     vec3 color = skyColor(reflected);
-    // A static plane with a bounded reflection march, including on Low.
     float travel = 0.06;
     #if SHADER_QUALITY_LEVEL == 0
-    float courtyardReflectionSteps = 12.0;
+    const int courtyardReflectionSteps = 8;
     #elif SHADER_QUALITY_LEVEL == 1
-    float courtyardReflectionSteps = 20.0;
+    const int courtyardReflectionSteps = 20;
     #else
-    float courtyardReflectionSteps = 28.0;
+    const int courtyardReflectionSteps = 28;
     #endif
-    for (int i = 0; i < 40; i++) {
-      if (float(i) >= courtyardReflectionSteps) break;
+    for (int i = 0; i < courtyardReflectionSteps; i++) {
       vec3 hit = surface + vec3(0.0, 0.035, 0.0) + reflected * travel;
       vec3 distances; float material;
       float distance = sampleScene(hit, material, distances);

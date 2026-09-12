@@ -17,9 +17,22 @@ import {
 import { personalArtGlsl } from './personal-art.glsl.js'
 import { flowersGlsl } from './flowers.glsl.js'
 import { indoorCourtyardGlsl } from './indoor-courtyard.glsl.js'
+import { cultivatedPlantsGlsl } from './cultivated-plants.glsl.js'
 import { MATERIAL_BOUNDARY } from '../../config/materials.js'
 
 export const materialCatalog = Object.freeze([
+  Object.freeze({
+    key: 'cultivated-plants',
+    label: 'Player-grown plants',
+    reference: 'moonbells, ribbon ferns and ember thistles grown from collected seed bags',
+    appliesTo: 'persistent protected outdoor planting pockets',
+    materialRange: Object.freeze([MATERIAL_BOUNDARY.succulent, MATERIAL_BOUNDARY.grass]),
+    mapping: 'camera-local ecology atlas with daylight growth and distance LOD',
+    outputs: Object.freeze(['moonbell', 'ribbon-fern', 'ember-thistle', 'seedling', 'mature-crown']),
+    textureInputs: Object.freeze(['local ecology state atlas']),
+    controls: Object.freeze({ species: 3, growthStages: 255, renderDistance: 68 }),
+    shader: cultivatedPlantsGlsl
+  }),
   Object.freeze({
     key: 'surreal-flowers',
     label: 'Surreal courtyard flowers',

@@ -6,6 +6,8 @@ import { ExplorerControls } from './input/explorer-controls.js'
 import { Landscape } from './render/landscape.js'
 import { QualityController } from './render/quality.js'
 import { WorldState } from './world/world-state.js'
+import { EcologyState } from './world/ecology.js'
+import { EcologyController } from './world/ecology-controller.js'
 import { PersonalArt } from './ui/personal-art.js'
 import { Interface } from './ui/interface.js'
 
@@ -44,6 +46,8 @@ export class MindLandscape {
   async start() {
     this.world = await WorldState.create()
     if (this.disposed) { this.world.dispose(); return }
+    this.ecology = await EcologyState.create(this.world.document.seed)
+    if (this.disposed) { this.world.dispose(); this.ecology.dispose(); return }
     this.quality = new QualityController()
     this.scene = new THREE.Scene()
     this.camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, CAMERA_NEAR, CAMERA_FAR)
@@ -61,7 +65,8 @@ export class MindLandscape {
       this.camera,
       this.world.effectiveSettings,
       this.world.document.seed,
-      this.quality.profile
+      this.quality.profile,
+      this.ecology
     )
     this.controls = new ExplorerControls(
       this.canvas,
@@ -69,12 +74,21 @@ export class MindLandscape {
       () => this.world.effectiveSettings,
       () => this.world.document.seed
     )
-    this.interface = new Interface(this.world, this.quality)
+    this.interface = new Interface(this.world, this.quality, this.ecology)
+    this.ecologyController = new EcologyController(
+      this.camera,
+      () => this.world.effectiveSettings,
+      () => this.world.document.seed,
+      this.ecology,
+      this.landscape,
+      this.interface
+    )
     this.personalArt = new PersonalArt(this.landscape.artAtlas, this.interface)
     await this.personalArt.load()
     if (this.disposed) return
 
     this.unsubscribers.push(this.world.subscribe((document) => {
+      this.ecology.useSeed(document.seed).catch(() => {})
       this.landscape.applySettings(this.world.effectiveSettings, document.seed)
       this.interface.render(document)
     }))
@@ -154,6 +168,7 @@ export class MindLandscape {
     if (!this.renderer.xr.isPresenting) this.controls.update(delta)
     this.landscape.uniforms.uPortalGlow.value = this.controls.portalGlow
     this.landscape.update(this.timer.getElapsed(), delta)
+    this.ecologyController.update(delta, this.landscape.uniforms.uDayPhase.value)
     this.renderer.render(this.scene, this.camera)
   }
 
@@ -167,10 +182,12 @@ export class MindLandscape {
     for (const unsubscribe of this.unsubscribers) unsubscribe()
     this.unsubscribers.length = 0
     this.personalArt?.dispose()
+    this.ecologyController?.dispose()
     this.interface?.dispose()
     this.controls?.dispose()
     this.landscape?.dispose()
     this.world?.dispose()
+    this.ecology?.dispose()
     this.vrButton?.remove()
     this.renderer?.dispose()
     this.timer.disconnect?.()

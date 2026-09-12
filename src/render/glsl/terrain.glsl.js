@@ -55,9 +55,16 @@ export const terrainGlsl = `
 
   float terrainHeight(vec2 point) {
     vec2 cell = floor((point + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    if (cultivationCell(cell)) {
+      vec2 plantingCenter = plantingCenterForCell(cell);
+      float base = terrainBaseHeight(point);
+      float plantingHeight = max(terrainBaseHeight(plantingCenter), uWaterLevel + 0.62);
+      float grade = 1.0 - smoothstep(3.8, 7.2, length(point - plantingCenter));
+      return mix(base, plantingHeight, grade);
+    }
     vec2 center = structureCenterForCell(cell);
     vec2 planar = point - center;
-    bool structure = hash21(cell + uSeed * 0.043) <= structurePresence()
+    bool structure = !cultivationCell(cell) && hash21(cell + uSeed * 0.043) <= structurePresence()
       && max(abs(planar.x), abs(planar.y)) <= 48.0;
     float ground = 0.0;
     float grade = 0.0;
@@ -101,6 +108,7 @@ export const terrainGlsl = `
   }
   bool dryStructureInterior(vec3 point) {
     vec2 cell = floor((point.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+    if (cultivationCell(cell)) return false;
     if (hash21(cell + uSeed * 0.043) > structurePresence()) return false;
     vec2 center = structureCenterForCell(cell);
     vec2 planar = point.xz - center;
