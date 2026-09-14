@@ -18,25 +18,29 @@ The analysis is intentionally based on existing artifacts rather than a manually
 
 ## Measurement Scope
 
-Baseline date: **2026-09-10**
+Project start date: **2026-09-03**
+
+Release coverage in this revision: **through `v1.0.0-alpha.7` (2026-09-14)**
+
+OpenAI Analytics coverage in this revision: **through `v1.0.0-alpha.6` only**. Tag 7 activity is not yet reflected in the supplied analytics.
 
 ### Data sources
 
 | Source | What it measures | Precision / limitation |
 |---|---|---|
 | Git tags and commit diffs | release dates, files changed, additions, deletions, affected subsystems | exact for the referenced commits |
-| OpenAI Analytics screenshot | Work/Codex agentic activity over a 30-day account-level window | aggregate; not a project-only ledger |
+| OpenAI Analytics screenshot | Work/Codex agentic activity over the documented project period through alpha.6 | aggregate; not a per-release ledger |
 | Human-time estimate | active development time | approximate phase-level estimate |
 | Purchase / subscription record | direct cash expenditure | direct spend is exact for the documented period; does not represent the full value of inference consumed |
 | Reset / promotional usage record | non-cash inference capacity available during the documented period | records one official OpenAI reset and three additional free weekly reset credits; reset capacity is separate from direct cash expenditure |
 
-The OpenAI Analytics window is broader than the tagged release interval and may contain activity unrelated to MIND.LANDSCAPES. It therefore cannot be used to calculate exact credits, turns, or plugin calls per release.
+The OpenAI Analytics data is not a per-release ledger. It therefore cannot be used to calculate exact credits, turns, or plugin calls per release.
 
 Regular Chat usage is not included in the Work/Codex usage view. This `INFERENCE_EFFICIENCY.md` analysis was itself developed through regular Chat, so the conversational reasoning used to interpret the repository, screenshots, and efficiency data is not represented in the Work/Codex analytics totals.
 
 OpenAI also describes credits as usage/billing units rather than a direct record of dollar spend.
 
-For cost analysis, direct cash expenditure and non-cash inference capacity are tracked separately. During the documented period, the project used a promotional $0 Plus month, one $10 purchased-credit top-up, one official OpenAI reset, and two additional free weekly reset credits.
+For cost analysis, direct cash expenditure and non-cash inference capacity are tracked separately. During the documented period, the project used a promotional $0 Plus month, one $10 purchased-credit top-up, one official OpenAI reset, and three additional free weekly reset credits.
 
 ---
 
@@ -49,6 +53,8 @@ For cost analysis, direct cash expenditure and non-cash inference capacity are t
 | `v1.0.0-alpha.3` | 2026-09-06 | `cd2dc93` | `alpha.2` |
 | `v1.0.0-alpha.4` | 2026-09-08 | `9189efc` | `alpha.3` |
 | `v1.0.0-alpha.5` | 2026-09-10 | `d89f9b7` | `alpha.4` |
+| `v1.0.0-alpha.6` | 2026-09-12 | `0872443` | `alpha.5` |
+| `v1.0.0-alpha.7` | 2026-09-14 | `fca39fa` | `alpha.6` |
 
 Release intervals:
 
@@ -57,9 +63,11 @@ alpha.1 -> alpha.2: 1 elapsed day
 alpha.2 -> alpha.3: 2 elapsed days
 alpha.3 -> alpha.4: 2 elapsed days
 alpha.4 -> alpha.5: 2 elapsed days
+alpha.5 -> alpha.6: 2 elapsed days
+alpha.6 -> alpha.7: 2 elapsed days
 ```
 
-From alpha.1 to the prospective alpha.5 state, **seven elapsed days** separate the first and fifth release points.
+From alpha.1 to alpha.7, **11 elapsed days** separate the first and seventh release points.
 
 ---
 
@@ -71,17 +79,19 @@ From alpha.1 to the prospective alpha.5 state, **seven elapsed days** separate t
 | `alpha.2` | 44 | 3,165 | 761 | +2,404 |
 | `alpha.3` | 64 | 2,831 | 497 | +2,334 |
 | `alpha.4` | 48 | 1,081 | 1,177 | -96 |
-| `alpha.5` | 25 | 774 | 138 | +636 |
+| `alpha.5` | 24 | 456 | 138 | +318 |
+| `alpha.6` | 31 | 1434 | 45 | +1389 |
+| `alpha.7` | 31 | 1250 | 263 | +987 |
 
-For the four consecutive post-alpha.1 deltas:
+For the six consecutive post-alpha.1 deltas:
 
 ```text
-sum of per-release "files changed" counts: 181
-additions:                            7,851
-deletions:                            2,573
+sum of per-release "files changed" counts: 242
+additions:                           10,217
+deletions:                            2,881
 ```
 
-The value **181 is not a count of unique files**. The same file can be changed in more than one release.
+The value 242 is not a count of unique files. The same file can be changed in more than one release.
 
 These statistics describe the scale and character of repository activity; they are not treated as productivity scores by themselves.
 
@@ -151,6 +161,39 @@ Primary implementation changes visible in the diff:
 - new `stair-render-sync.test.js`, explicitly adding verification for stair/render synchronization
 - expanded architecture-morph, material-catalog, spatial-layout, and vegetation-shader tests
 
+
+### `v1.0.0-alpha.6`
+
+The next two-day release interval formalized the inference-efficiency record and refreshed the tagged presentation state.
+
+Repository-visible changes in the tagged snapshot include:
+
+- introduction of `INFERENCE_EFFICIENCY.md` as the detailed challenge/efficiency record, replacing the README's previous link to the shorter `CHALLENGE.md`
+- new alpha.6 screenshots documenting the release state
+- retention of the generalized rendering and persistence architecture already established by alpha.5, including adaptive quality, deterministic maze reconstruction, personal art, architectural morphing, vegetation detail scaling, and bounded maze/collision data structures
+- a documented 55 × 55 RGBA maze-connectivity texture of about 12 KB for the then-current single-network representation, rebuilt only on structure-cell transitions or world-setting changes
+
+### `v1.0.0-alpha.7`
+
+The following two-day interval adds a new persistent cultivation progression and expands underground procedural structure.
+
+Tagged behavior includes:
+
+- collectible seed bags for three base species: Moonbells, Ribbon ferns, and Ember thistles
+- persistent seed inventory and a dedicated **Seeds** interface
+- stable per-visit seed-bag placement inside generated buildings, with a new saved visit generation on re-entry
+- outdoor planting pockets and interaction-driven planting
+- persistent plant growth over the day/night cycle with navigation beacons
+- two-plant plots and pair-dependent hybrid unlocks
+- ten named hybrid species forming a branching progression from the three base species
+- mature-species rendering with close-detail geometry/material treatment and simplified distant silhouettes
+- expansion of interiors from one procedural maze network to **two independently generated 7 × 7 underground floors**
+- floor-preserving portal arrivals and a second stair flight chosen from traversable first-floor space
+- expansion of the nearby maze-connectivity texture from the alpha.6 55 × 55 representation to a **77 × 154 byte RGBA texture (about 47 KB)** covering the two-floor state
+- continued bounded CPU collision caches and synchronized geometry/connectivity updates
+
+---
+
 ---
 
 ## Software Complexity Context
@@ -168,6 +211,7 @@ MIND.LANDSCAPES combines tightly coupled systems including:
 - adaptive quality and performance behavior
 - arbitrary user-provided image and text inputs
 - automated and browser-based verification
+- persistent gameplay/progression state spanning generated interiors and exterior cultivation
 
 Changes in one subsystem can affect several others. For example, world-generation changes can affect rendering, navigation, persistence, and performance, while shader or material changes can affect both visual correctness and runtime cost.
 
@@ -179,30 +223,30 @@ No numerical complexity multiplier is assigned. Software class is recorded only 
 
 ## OpenAI Agentic-Usage Snapshot
 
-The current 30-day Analytics snapshot displayed:
+The cumulative Analytics record for the documented project period through alpha.6 is:
 
 | Dashboard metric | Value |
 |---|---:|
-| Model turns | 267 |
-| Plugin calls | 453 |
+| Model turns | 310 |
+| Plugin calls | 554 |
 | Credits spent | 251.7 |
 | Skills used | 15 |
 
 Aggregate ratios:
 
 ```text
-plugin calls / model turns = 453 / 267 = 1.70
-credits / model turns      = 251.7 / 267 = 0.94
+plugin calls / model turns = 554 / 310 = 1.79
+credits / model turns      = 251.7 / 310 = 0.81
 ```
 
-These are **window-level ratios**, not a mapping of individual plugin calls or credits to specific model turns.
+These are **project-period aggregate ratios**, not a mapping of individual plugin calls or credits to specific model turns.
 
 In particular:
 
-- `1.70` does not mean every turn executed 1.70 tools
-- `0.94` is not a dollar cost per turn
-- the 30-day totals should not be attributed entirely to this repository unless project-only usage is independently established
-- the snapshot does not expose a complete token ledger for this analysis
+- `1.79` does not mean every turn executed 1.79 tools
+- `0.81` is not a dollar cost per turn
+- tag 7 activity is not yet included
+- the available analytics do not expose a complete token ledger for this analysis
 
 The analytics are therefore best used as an inference-activity baseline, not as exact token accounting.
 
@@ -259,7 +303,7 @@ Direct AI-related cash expenditure through the baseline period:
 | ChatGPT Plus subscription | $0 promotional first month |
 | Purchased credits | $10 |
 | Official OpenAI reset | $0 out-of-pocket |
-| Two free weekly reset credits used | $0 out-of-pocket |
+| Three free weekly reset credits used | $0 out-of-pocket |
 | **Direct out-of-pocket spend** | **$10** |
 
 This measures cash expenditure, not the full economic value or nominal retail value of the inference consumed.
@@ -269,7 +313,7 @@ The documented period therefore includes both paid and non-cash inference capaci
 - one $10 purchased-credit top-up
 - a promotional $0 Plus month
 - one official OpenAI reset
-- two additional free weekly reset credits
+- three additional free weekly reset credits
 
 ---
 
@@ -281,7 +325,7 @@ A useful conceptual description of the system is:
 F(text, images, seed, state) -> interactive world
 ```
 
-The output is not one fixed landscape. Tagged code includes mechanisms whose behavior varies with user media, procedural state, and persistence.
+The output is not one fixed landscape. Tagged code includes mechanisms whose behavior varies with user media, procedural state, persistence, and, by alpha.7, persistent cultivation/progression state.
 
 That makes generalization relevant to efficiency analysis: a change that works across many generated worlds represents broader retained capability than a change tailored to one fixed scene.
 
@@ -294,14 +338,16 @@ However, this analysis does **not** assign a numerical multiplier to generalizat
 The current evidence is consistent with effective inference-budget use because several signals move in a favorable direction at the same time:
 
 - substantial tagged changes were delivered at 1-2 day intervals after alpha.1
-- the prospective alpha.5 state continues the two-day release cadence
-- the system progressed from bootstrap architecture into persistence, deterministic generation, generalized media handling, verification, performance work, and continued GLSL/render synchronization refinement
+- alpha.5, alpha.6, and alpha.7 each continued the two-day release cadence
+- the system progressed from bootstrap architecture into persistence, deterministic generation, generalized media handling, verification, performance work, continued GLSL/render synchronization refinement, and persistent cultivation/progression with a two-floor procedural interior model
 - the reported human-time band fell after the initial phase
 - direct cash expenditure remained at $10 during the observed period
-- available inference capacity was supplemented by a promotional $0 Plus month, one official OpenAI reset, and two additional free weekly reset credits
+- available inference capacity was supplemented by a promotional $0 Plus month, one official OpenAI reset, and three additional free weekly reset credits
 - later development includes substantial deletion, rewriting, and consolidation rather than only code accumulation
 - test and browser-harness coverage expanded alongside feature development
 - nearly all direct implementation was delegated to LLM-assisted workflows
+- the cumulative Analytics record through alpha.6 shows 310 model turns, 554 plugin calls, and 251.7 credits spent
+- alpha.7 inference usage is not yet included
 
 The strongest defensible conclusion is:
 
@@ -317,12 +363,13 @@ The current record does **not** establish:
 
 - an exact percentile among AI-assisted developers
 - exact raw-token efficiency
-- exact project-only credits or turns from the 30-day Analytics snapshot
+- exact per-release credits or turns from the Analytics record
+- exact tag 7 inference usage before the next analytics update
 - a causal productivity multiplier
 - a controlled comparison with conventional development
 - long-term maintainability
 - long-term efficiency after substantially greater project complexity
-- robustness across every possible image/text input
+- robustness across every possible image/text input or generated cultivation state
 - an exact machine-verified percentage of LLM-authored code
 
 Those questions require either more granular telemetry, external comparison data, provenance instrumentation, or a longer observation period.
