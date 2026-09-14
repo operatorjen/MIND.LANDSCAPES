@@ -1,4 +1,4 @@
-import { SEED_TYPES } from '../world/ecology.js'
+import { SEED_TYPES, seedTypeUnlocked } from '../world/ecology.js'
 
 const JSON_INDENT = 2
 const SPEED_DECIMALS = 2
@@ -182,9 +182,11 @@ export class Interface {
       quantity.className = 'seed-quantity'
       const planted = ecologyDocument.stats.plantedByType[type.id]
       const found = ecologyDocument.stats.collectedByType[type.id]
-      quantity.textContent = count ? `${count} available · ${planted} planted` : found ? `0 available · ${planted} planted` : 'Not discovered'
+      const unlocked = seedTypeUnlocked(type, this.ecology)
+      quantity.textContent = count ? `${count} available · ${planted} planted` : found ? `0 available · ${planted} planted` : unlocked ? 'Not discovered' : 'Hybrid locked'
       const description = document.createElement('small')
-      description.textContent = type.description
+      const parents = type.requires?.map((id) => SEED_TYPES.find((seed) => seed.id === id)?.label).join(' + ')
+      description.textContent = parents && !unlocked ? `${type.description} Grow ${parents} together.` : type.description
       button.append(swatch, heading, quantity, description)
       this.seedList.append(button)
     }

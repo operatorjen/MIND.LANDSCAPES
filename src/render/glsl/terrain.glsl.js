@@ -1,3 +1,5 @@
+import { MAZE_DEPTH_END, MAZE_SIZE, MAZE_WIDTH_HALF, MAZE_WIDTH_STEP } from '../../world/maze.js'
+
 export const terrainGlsl = `
   vec2 foldedPoint(vec2 point) {
     return point + vec2(
@@ -100,9 +102,19 @@ export const terrainGlsl = `
       height = min(height, ground - stepped * UNDERGROUND_DESCENT);
     }
 
-    float lastRow = -depth * 0.78;
-    if (abs(local.x) < width * 0.5 && local.y < stairEnd + 0.2 && local.y > lastRow - mazeRearMargin(depth)) {
+    float lastRow = -depth * ${MAZE_DEPTH_END.toFixed(2)};
+    if (abs(local.x) < width * ${MAZE_WIDTH_HALF.toFixed(2)} && local.y < stairEnd + 0.2 && local.y > lastRow - mazeRearMargin(depth)) {
       height = min(height, ground - UNDERGROUND_DESCENT);
+    }
+    vec4 lowerStairNode;
+    vec2 lowerStairLocal;
+    mazePlanDistance(local, cell, width, depth, variant, 0.0, lowerStairNode, lowerStairLocal);
+    vec2 lowerStairSpacing = vec2(width * ${MAZE_WIDTH_STEP.toFixed(2)}, (depth * ${(MAZE_DEPTH_END - 0.14).toFixed(2)} - 1.2) / ${(MAZE_SIZE - 1).toFixed(1)});
+    float lowerStairAcross;
+    float lowerProgress = lowerStairProgress(lowerStairNode, lowerStairLocal, lowerStairSpacing, lowerStairAcross);
+    if (lowerProgress >= 0.0 && lowerStairAcross < STAIR_WIDTH) {
+      float lowerStep = floor(lowerProgress * STAIR_STEPS) / STAIR_STEPS;
+      height = min(height, ground - UNDERGROUND_DESCENT * (1.0 + lowerStep));
     }
     return height;
   }
@@ -119,8 +131,8 @@ export const terrainGlsl = `
     float width = mix(15.0, 23.0, hash21(cell + 4.9)) * mix(0.9, 1.18, clamp(uMechanicalIntensity * 0.55 + uStructures * 0.2, 0.0, 1.0));
     float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0));
     vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * planar;
-    return abs(local.x) < width * 0.62 + 0.6
-      && local.y < depth * 0.58 + 0.6 && local.y > -depth * 0.78 - mazeRearMargin(depth);
+    return abs(local.x) < width * ${MAZE_WIDTH_HALF.toFixed(2)}
+      && local.y < depth * 0.58 + 0.6 && local.y > -depth * ${MAZE_DEPTH_END.toFixed(2)} - mazeRearMargin(depth);
   }
 
   float outdoorWaterDistance(vec3 origin, vec3 direction) {

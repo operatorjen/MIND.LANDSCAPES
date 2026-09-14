@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { SpatialQueries } from './spatial-queries.js'
 import { STRUCTURE_CELL_SIZE } from '../config/world.js'
+import { buildingAtPosition } from './spatial-layout.js'
 import {
   PLANTING_RADIUS,
   SEED_TYPES,
@@ -41,6 +42,12 @@ export class EcologyController {
     const settings = this.getSettings()
     const seed = this.getSeed()
     const worldChanged = this.spatial.update(settings, seed)
+    const building = buildingAtPosition(this.camera.position, settings, seed, this.spatial)
+    const buildingKey = building ? `${seed}:${building.cellX}:${building.cellZ}` : null
+    if (buildingKey !== this.activeBuildingKey) {
+      this.activeBuildingKey = buildingKey
+      if (building) this.ecology.visitBuilding(building)
+    }
     const bag = nearestSeedBag(this.camera.position, settings, seed, this.ecology, this.spatial)
     if (bag && !this.collecting) this.collect(bag)
 
@@ -48,10 +55,17 @@ export class EcologyController {
     if (this.activePocket) {
       this.ecology.discoverPocket(this.activePocket)
       this.landscape.uniforms.uPlantingFocus.value.set(this.activePocket.x, this.activePocket.z, PLANTING_RADIUS, 1)
-      const plant = this.ecology.plantingAt(this.activePocket.cellX, this.activePocket.cellZ)
-      if (plant) {
-        const type = SEED_TYPES.find(({ id }) => id === plant.species)
-        this.interface.setInteraction(`${type.label} · ${Math.round(plant.growth * 100)}% grown`)
+      const plants = this.ecology.plantingsAt(this.activePocket.cellX, this.activePocket.cellZ)
+      if (plants.length) {
+        const status = plants.map((plant) => {
+          const type = SEED_TYPES.find(({ id }) => id === plant.species)
+          return `${type.label} ${Math.round(plant.growth * 100)}%`
+        }).join(' + ')
+        const selected = SEED_TYPES.find(({ id }) => id === this.ecology.document.selectedSeed)
+        const canCompanionPlant = plants.length < 2
+          && this.ecology.document.inventory[selected.id] > 0
+          && !plants.some(({ species }) => species === selected.id)
+        this.interface.setInteraction(canCompanionPlant ? `${status} · press E to add ${selected.label}` : status)
       } else {
         const selected = SEED_TYPES.find(({ id }) => id === this.ecology.document.selectedSeed)
         const count = this.ecology.document.inventory[selected.id]
@@ -86,10 +100,10 @@ export class EcologyController {
     const signature = `${seed}:${baseX}:${baseZ}:${inventoryCount}:${this.ecology.document.plantings.length}:${this.ecology.document.discoveredPockets.length}`
     if (worldChanged || signature !== this.beaconSignature) {
       this.beaconSignature = signature
-      const planted = plantedPlantingPockets(settings, seed, this.ecology, this.spatial).map(({ plant, ...pocket }) => ({
+      const planted = plantedPlantingPockets(settings, seed, this.ecology, this.spatial).map(({ plants, ...pocket }) => ({
         ...pocket,
         planted: true,
-        label: SEED_TYPES.find(({ id }) => id === plant.species)?.label || 'Plant'
+        label: plants.map((plant) => SEED_TYPES.find(({ id }) => id === plant.species)?.label || 'Plant').join(' + ')
       }))
       if (!inventoryCount) {
         this.beacons = planted
@@ -105,10 +119,11 @@ export class EcologyController {
       return
     }
     this.camera.updateMatrixWorld()
-    const beacons = this.beacons.flatMap((beacon) => {
-      if (this.activePocket?.cellX === beacon.cellX && this.activePocket?.cellZ === beacon.cellZ) return []
-      return [this.projectBeacon(beacon)]
-    })
+    const beacons = []
+    for (const beacon of this.beacons) {
+      if (this.activePocket?.cellX === beacon.cellX && this.activePocket?.cellZ === beacon.cellZ) continue
+      beacons.push(this.projectBeacon(beacon))
+    }
     this.interface.setPlantingBeacons(beacons)
   }
 
@@ -148,7 +163,8 @@ export class EcologyController {
     const plant = await this.ecology.plant(pocket)
     if (!plant) return
     const type = SEED_TYPES.find(({ id }) => id === plant.species)
-    this.interface.notify(`${type.label} planted. Sunlight will help it grow.`)
+    const companions = this.ecology.plantingsAt(pocket.cellX, pocket.cellZ).length
+    this.interface.notify(`${type.label} ${companions > 1 ? 'added to the plot' : 'planted'}. Sunlight will help it grow.`)
   }
 
   dispose() {

@@ -17,7 +17,9 @@ import {
   plantingCenter,
   plantingPocket,
   plantedPlantingPockets,
-  seedBagForLayout
+  seedBagsForLayout,
+  seedBagForLayout,
+  seedTypeUnlocked
 } from '../src/world/ecology.js'
 import { ecologyMapGlsl } from '../src/render/glsl/ecology-map.glsl.js'
 import { plantedGeometryGlsl } from '../src/render/glsl/vegetation/planted-geometry.glsl.js'
@@ -58,21 +60,97 @@ test('cultivation pockets remain building-free and above water as the generated 
 test('seed bags are deterministic interior items attached only to generated buildings', () => {
   const settings = deriveSettings([])
   settings.generation.structures = 2
-  const cell = findCell((x, z) => structureLayout(x, z, settings, seed))
-  const layout = structureLayout(cell.cellX, cell.cellZ, settings, seed)
-  const first = seedBagForLayout(layout)
-  const second = seedBagForLayout(structureLayout(cell.cellX, cell.cellZ, settings, seed))
+  let layout
+  let first
+  const bagNodes = new Set()
+  for (let z = -20; z <= 20; z++) for (let x = -20; x <= 20; x++) {
+    const candidateLayout = structureLayout(x, z, settings, seed)
+    const bag = seedBagForLayout(candidateLayout, null)
+    if (!bag) continue
+    layout ||= candidateLayout
+    first ||= bag
+    bagNodes.add(bag.node)
+  }
+  assert.ok(layout && first)
+  const second = seedBagForLayout(structureLayout(layout.cellX, layout.cellZ, settings, seed), null)
   assert.deepEqual(first, second)
   assert.ok(SEED_TYPES.some(({ id }) => id === first.species))
   assert.ok(first.y < layout.ground - 4)
-  assert.equal(seedBagForLayout(null), null)
+  assert.ok(bagNodes.size > 4)
+  assert.equal(seedBagForLayout(null, null), null)
   const cache = new SpatialQueries()
   cache.update(settings, seed)
-  const cached = seedBagForLayout(layout, cache)
+  const cached = seedBagForLayout(layout, null, cache)
   assert.deepEqual(cached, first)
-  assert.equal(seedBagForLayout(layout, cache), cached)
+  assert.equal(seedBagForLayout(layout, null, cache), cached)
   cache.update(settings, seed + 1)
   assert.equal(cache.maps.size, 0)
+})
+
+test('re-entering a building creates a fresh stable pair of seed bags across both floors', async () => {
+  const settings = deriveSettings([])
+  settings.generation.structures = 2
+  const cell = findCell((x, z) => structureLayout(x, z, settings, seed))
+  const layout = structureLayout(cell.cellX, cell.cellZ, settings, seed)
+  const state = new EcologyState(repository(), normalizeEcologyDocument(null, seed))
+  const initialRevision = state.bagRevision
+  const initial = seedBagsForLayout(layout, state)
+  assert.deepEqual(initial.map(({ floor }) => floor), [0, 1])
+  assert.equal(state.visitBuilding(layout), true)
+  assert.equal(state.bagRevision, initialRevision + 1)
+  const firstVisit = seedBagsForLayout(layout, state)
+  assert.deepEqual(firstVisit.map(({ floor }) => floor), [0, 1])
+  assert.notDeepEqual(firstVisit.map(({ id }) => id), initial.map(({ id }) => id))
+  assert.notDeepEqual(firstVisit.map(({ floor, node, species }) => ({ floor, node, species })),
+    initial.map(({ floor, node, species }) => ({ floor, node, species })))
+  const stable = seedBagsForLayout(structureLayout(cell.cellX, cell.cellZ, settings, seed), state)
+  assert.deepEqual(stable, firstVisit)
+  await state.collectBag(firstVisit[0])
+  assert.equal(state.bagRevision, initialRevision + 2)
+  state.visitBuilding(layout)
+  const returnVisit = seedBagsForLayout(layout, state)
+  assert.notDeepEqual(returnVisit.map(({ id }) => id), firstVisit.map(({ id }) => id))
+  assert.ok(returnVisit.some((bag) => !state.hasBag(bag.id)))
+  assert.equal(state.document.buildingVisits[`${cell.cellX}:${cell.cellZ}`], 2)
+})
+
+test('mature companion plants unlock their hybrid seed bags only on the same plot', async () => {
+  assert.equal(SEED_TYPES.length, 13)
+  const settings = deriveSettings([])
+  settings.generation.structures = 2
+  const state = new EcologyState(repository(), normalizeEcologyDocument({
+    version: 1,
+    seed,
+    inventory: { moonbell: 1, ribbonFern: 1, emberThistle: 1 },
+    selectedSeed: 'moonbell',
+    plantings: [],
+    collectedBags: [],
+    stats: {}
+  }, seed))
+  const plot = { cellX: 2, cellZ: 3 }
+  assert.equal((await state.plant(plot)).species, 'moonbell')
+  state.selectSeed('ribbonFern')
+  assert.equal((await state.plant(plot)).species, 'ribbonFern')
+  state.selectSeed('emberThistle')
+  assert.equal(await state.plant(plot), null)
+  const immatureRevision = state.bagRevision
+  state.advanceGrowth(1, 1)
+  assert.equal(state.bagRevision, immatureRevision)
+  const silverlace = SEED_TYPES.find(({ id }) => id === 'silverlace')
+  assert.equal(seedTypeUnlocked(silverlace, state), false)
+  state.advanceGrowth(FULL_GROWTH_LIGHT_SECONDS, 1)
+  assert.equal(seedTypeUnlocked(silverlace, state), true)
+  assert.equal(state.bagRevision, immatureRevision + 1)
+  let hybridLayout
+  for (let z = -20; z <= 20 && !hybridLayout; z++) for (let x = -20; x <= 20; x++) {
+    const candidate = structureLayout(x, z, settings, seed)
+    if (seedBagsForLayout(candidate, state).some(({ species }) => species === silverlace.id)) { hybridLayout = candidate; break }
+  }
+  assert.ok(hybridLayout)
+  state.document.plantings[1].growth = 0.99
+  assert.equal(seedBagsForLayout(hybridLayout, state).some(({ species }) => species === silverlace.id), false)
+  state.document.plantings[1].growth = 1
+  assert.equal(seedBagsForLayout(hybridLayout, state).some(({ species }) => species === silverlace.id), true)
 })
 
 test('collected bags become inventory, planting consumes one seed, and daylight matures plants once', async () => {
@@ -133,6 +211,18 @@ test('growth pauses at deep night and ecology geometry is atlas-backed and dista
   assert.match(plantedGeometryGlsl, /cameraDistance > 68\.0 \* uDetailScale/)
   assert.match(plantedGeometryGlsl, /float plantedDistance/)
   assert.match(plantedGeometryGlsl, /#if SHADER_QUALITY_LEVEL|uDetailScale/)
+  assert.match(plantedGeometryGlsl, /moonbellBloomDistance/)
+  assert.match(plantedGeometryGlsl, /moonbellBudDistance/)
+  assert.match(plantedGeometryGlsl, /seedlingRosetteDistance/)
+  assert.match(plantedGeometryGlsl, /fernLeafletDistance/)
+  assert.match(plantedGeometryGlsl, /thistleFloretDistance/)
+  assert.match(plantedGeometryGlsl, /closeDetail.*22\.0 \* uDetailScale/)
+  assert.match(plantedGeometryGlsl, /for \(int i = 0; i < 16; i\+\+\)/)
+  assert.match(plantedGeometryGlsl, /satelliteGrowth/)
+  assert.match(plantedGeometryGlsl, /return morphPlantDistance\(coarse, shape, detail\)/)
+  assert.doesNotMatch(plantedGeometryGlsl, /return mix\(coarse, min\(coarse, shape\), detail\)/)
+  assert.match(plantedGeometryGlsl, /MATERIAL_CULTIVATED_STEM/)
+  assert.match(plantedGeometryGlsl, /MATERIAL_CULTIVATED_LEAF/)
   assert.match(architectureGlsl, /MATERIAL_SEED_BAG/)
 })
 
@@ -173,10 +263,10 @@ test('discovered planting pockets persist as beacon destinations while a new poc
   assert.notDeepEqual({ cellX: unexplored.cellX, cellZ: unexplored.cellZ }, { cellX: discovered.cellX, cellZ: discovered.cellZ })
   ecology.document.plantings.push({ cellX: discovered.cellX, cellZ: discovered.cellZ, species: 'moonbell', growth: 0.2 })
   assert.deepEqual(discoveredAvailablePlantingPockets(settings, seed, ecology), [])
-  assert.deepEqual(plantedPlantingPockets(settings, seed, ecology).map(({ cellX, cellZ, plant }) => ({
+  assert.deepEqual(plantedPlantingPockets(settings, seed, ecology).map(({ cellX, cellZ, plants }) => ({
     cellX,
     cellZ,
-    species: plant.species
+    species: plants[0].species
   })), [{ cellX: discovered.cellX, cellZ: discovered.cellZ, species: 'moonbell' }])
   assert.equal(store.saves, 1)
 })

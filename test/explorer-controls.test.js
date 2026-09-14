@@ -33,6 +33,33 @@ test('stationary controls reuse probes while updating height and changed worlds'
     controls.update(1 / 60)
     assert.ok(misses > 0)
     assert.ok(camera.position.y >= settings.water.level + 1.58)
+    const stored = new Map()
+    window.localStorage = {
+      getItem: (key) => stored.get(key) ?? null,
+      setItem: (key, value) => stored.set(key, value)
+    }
+    camera.position.set(24, -12, 38)
+    controls.yaw = 1.2
+    controls.pitch = -0.3
+    window.dispatchEvent(new Event('pagehide'))
+    const restoredCamera = new THREE.PerspectiveCamera()
+    const restored = new ExplorerControls(new EventTarget(), restoredCamera, () => settings, () => 0.314159)
+    assert.deepEqual(restoredCamera.position.toArray(), [24, -12, 38])
+    assert.equal(restored.yaw, 1.2)
+    assert.equal(restored.pitch, -0.3)
+    assert.ok(restored.portalCooldown > 0)
+    restored.dispose()
+    const otherWorld = new ExplorerControls(new EventTarget(), new THREE.PerspectiveCamera(), () => settings, () => 0.5)
+    assert.equal(otherWorld.camera.position.x, 0)
+    assert.equal(otherWorld.camera.position.z, 7)
+    otherWorld.dispose()
+    stored.set('mind-landscape-position', '{invalid')
+    const invalid = new ExplorerControls(new EventTarget(), new THREE.PerspectiveCamera(), () => settings, () => 0.314159)
+    assert.equal(invalid.camera.position.z, 7)
+    invalid.dispose()
+    window.localStorage.setItem = () => { throw new Error('Storage unavailable') }
+    assert.doesNotThrow(() => controls.savePosition())
+
   } finally {
     controls.dispose()
     globalThis.window = previousWindow
@@ -218,4 +245,49 @@ test('wet-site stairs can be descended and climbed back out across building rota
     assert.ok(checked >= 8, `Only checked ${checked} wet-site buildings`)
     assert.equal(rotations.size, 4)
   } finally { globalThis.window = previousWindow }
+})
+
+test('second stair flight walks from the first maze floor into the lower maze', async () => {
+  const { mazeForLayout } = await import('../src/world/maze.js')
+  const previousWindow = globalThis.window
+  globalThis.window = new EventTarget()
+  const settings = deriveSettings([])
+  settings.water.level = -2.5
+  settings.generation.structures = 2
+  settings.generation.mechanicalIntensity = 1
+  settings.generation.ritualIntensity = 1
+  const seed = 0.314159
+  const layout = structureLayout(-3, -3, settings, seed)
+  const upper = mazeForLayout(layout, 0)
+  const lower = mazeForLayout(layout, 1)
+  const top = upper.nodes[upper.lowerStair.top]
+  const bottom = upper.nodes[upper.lowerStair.bottom]
+  const lowerExit = lower.nodes.find(node => node.id !== lower.entry && lower.paths[node.id].length === 2)
+  const world = point => ({
+    x: layout.centerX + Math.cos(layout.angle) * point.x - Math.sin(layout.angle) * point.z,
+    z: layout.centerZ + Math.sin(layout.angle) * point.x + Math.cos(layout.angle) * point.z
+  })
+  const camera = new THREE.PerspectiveCamera()
+  const controls = new ExplorerControls(new EventTarget(), camera, () => settings, () => seed)
+  try {
+    const start = world(top)
+    camera.position.set(start.x, layout.ground - 5.6 + 1.82, start.z)
+    controls.keys.add('KeyW')
+    controls.portalCooldown = 1000
+    for (const node of [bottom, lowerExit]) {
+      const target = world(node)
+      let arrived = false
+      for (let frame = 0; frame < 360; frame++) {
+        const distance = Math.hypot(target.x - camera.position.x, target.z - camera.position.z)
+        if (distance < 0.14) { arrived = true; break }
+        controls.yaw = Math.atan2(-(target.x - camera.position.x), -(target.z - camera.position.z))
+        controls.update(1 / 60)
+      }
+      assert.equal(arrived, true, `Second stair traversal stopped ${Math.hypot(target.x - camera.position.x, target.z - camera.position.z)}m before its target`)
+    }
+    assert.ok(Math.abs(camera.position.y - (layout.ground - 11.2 + 1.82)) < 0.08)
+  } finally {
+    controls.dispose()
+    globalThis.window = previousWindow
+  }
 })

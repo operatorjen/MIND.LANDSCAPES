@@ -334,8 +334,13 @@ export const lightingGlsl = `
       surface = mix(floodedStone, reflectedSky * 0.52 + vec3(0.025, 0.06, 0.07), (0.22 + grazing * 0.48) * mix(0.42, 1.0, floorFacing));
     } else if (abs(material - MATERIAL_SEED_BAG) < 0.01) {
       float fiber = noise21(position.xz * 17.0 + position.y * 9.0 + uSeed);
-      surface = mix(vec3(0.34, 0.19, 0.07), vec3(0.88, 0.66, 0.25), fiber * 0.42 + max(normal.y, 0.0) * 0.34);
-      surface += vec3(0.18, 0.34, 0.12) * (0.35 + 0.65 * sin(uTime * 2.0) * sin(uTime * 2.0));
+      vec2 bagCell = floor((position.xz + STRUCTURE_CELL_HALF) / STRUCTURE_CELL);
+      vec4 bagEcology = ecologyDataForCell(bagCell);
+      float bagGround = terrainFoundation(structureCenterForCell(bagCell));
+      float bagSpecies = floor((position.y < bagGround - UNDERGROUND_DESCENT * 1.5 ? bagEcology.a : bagEcology.g) * 255.0 + 0.5);
+      vec3 seedColor = cultivatedSeedColor(bagSpecies);
+      surface = mix(seedColor * 0.24, seedColor, fiber * 0.38 + max(normal.y, 0.0) * 0.42);
+      surface += mix(seedColor, vec3(1.0), 0.34) * (0.16 + 0.22 * sin(uTime * 2.0) * sin(uTime * 2.0));
     } else if (material < MATERIAL_LIMINAL_MAX) {
       float roomCellX = abs(fract(position.x * 0.18) - 0.5);
       float roomCellZ = abs(fract(position.z * 0.18) - 0.5);

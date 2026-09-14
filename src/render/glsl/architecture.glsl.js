@@ -1,3 +1,5 @@
+import { MAZE_DEPTH_END, MAZE_SIZE, MAZE_WIDTH_HALF, MAZE_WIDTH_STEP } from '../../world/maze.js'
+
 export const architectureGlsl = `
   float architectureBoulderDistance(
     vec3 local,
@@ -33,6 +35,19 @@ export const architectureGlsl = `
     return mix(supported, structureDistance, smoothstep(0.5, 1.0, amount));
   }
 
+  vec2 lowerStairGeometry(vec3 local, vec4 node, vec2 nodeLocal, vec2 spacing) {
+    float across;
+    float progress = lowerStairProgress(node, nodeLocal, spacing, across);
+    if (progress < 0.0) return vec2(1000.0);
+    float stepped = floor(progress * STAIR_STEPS) / STAIR_STEPS;
+    float stairFloor = -UNDERGROUND_DESCENT + 0.5 - stepped * UNDERGROUND_DESCENT;
+    float stairCeiling = -0.8;
+    float width = across - STAIR_WIDTH;
+    float cavity = max(width, max(stairFloor - local.y, local.y - stairCeiling));
+    float mass = max(width, max(local.y - stairFloor, -UNDERGROUND_DESCENT * 2.0 + 0.1 - local.y));
+    return vec2(cavity, mass);
+  }
+
   float brutalistSlabDistance(
     vec3 point,
     vec3 center,
@@ -62,12 +77,12 @@ export const architectureGlsl = `
     float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, clamp(uRitualIntensity * 0.4 + uStructures * 0.24, 0.0, 1.0));
     vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * (position.xz - center);
     vec4 node; vec2 nodeLocal;
-    mazePlanDistance(local, cell, width, depth, variant, node, nodeLocal);
-    if (node.a < 0.5 || node.a > 254.5) return false;
+    mazePlanDistance(local, cell, width, depth, variant, 0.0, node, nodeLocal);
+    if (node.a < 0.5 || node.a > 200.5) return false;
     float shape = floor((node.a - 1.0) / 48.0);
     vec2 count = vec2(shape > 1.5 ? 4.0 : 3.0, shape > 0.5 ? 3.0 : 2.0);
     float role = floor(mod(node.a - 1.0, 48.0) / 3.0);
-    vec2 spacing = vec2(width * 0.17, (depth * 0.64 - 1.2) / 4.0);
+    vec2 spacing = vec2(width * ${MAZE_WIDTH_STEP.toFixed(2)}, (depth * ${(MAZE_DEPTH_END - 0.14).toFixed(2)} - 1.2) / ${(MAZE_SIZE - 1).toFixed(1)});
     vec2 offset = vec2(mod(role, count.x) - (count.x - 1.0) * 0.5, -(floor(role / count.x) - (count.y - 1.0) * 0.5)) * spacing;
     point = vec3(nodeLocal.x + offset.x, position.y - ground + 5.1, nodeLocal.y + offset.y);
     halfSize = spacing * (count * 0.5 - vec2(0.04, 0.06));
@@ -140,7 +155,6 @@ export const architectureGlsl = `
     out float stone, out float rock, out float soil, out float foliage,
     out float thresholdGlow, out float flowerMaterial, float growth, bool includeFlowers
   ) {
-    // A narrow, subtly lit threshold stands just inside the back corner.
     vec2 exitRoot = vec2(halfSize.x - 1.5, -halfSize.y + 0.9);
     vec3 gate = point - vec3(exitRoot.x, 0.18, exitRoot.y);
     stone = min(boxDistance(gate - vec3(-0.68, 1.3, 0.0), vec3(0.075, 1.3, 0.11)),
@@ -224,12 +238,12 @@ export const architectureGlsl = `
     float depth = mix(28.0, 44.0, hash21(cell + 11.3)) * mix(0.9, 1.2, depthExpression);
     vec2 local = rotate2((floor(variant * 4.0) + 0.5) * 1.5707963) * (origin.xz + direction.xz * candidate - center);
     vec4 node; vec2 nodeLocal;
-    float corridor = mazePlanDistance(local, cell, width, depth, variant, node, nodeLocal);
-    if (node.a < 0.5 || node.a > 254.5 || corridor >= -0.02) return -1.0;
+    float corridor = mazePlanDistance(local, cell, width, depth, variant, 0.0, node, nodeLocal);
+    if (node.a < 0.5 || node.a > 200.5 || corridor >= -0.02) return -1.0;
     float shape = floor((node.a - 1.0) / 48.0);
     vec2 count = vec2(shape > 1.5 ? 4.0 : 3.0, shape > 0.5 ? 3.0 : 2.0);
     float role = floor(mod(node.a - 1.0, 48.0) / 3.0);
-    vec2 spacing = vec2(width * 0.17, (depth * 0.64 - 1.2) / 4.0);
+    vec2 spacing = vec2(width * ${MAZE_WIDTH_STEP.toFixed(2)}, (depth * ${(MAZE_DEPTH_END - 0.14).toFixed(2)} - 1.2) / ${(MAZE_SIZE - 1).toFixed(1)});
     vec2 offset = vec2(mod(role, count.x) - (count.x - 1.0) * 0.5, -(floor(role / count.x) - (count.y - 1.0) * 0.5)) * spacing;
     vec2 courtyardPoint = nodeLocal + offset;
     vec2 halfSize = spacing * (count * 0.5 - vec2(0.04, 0.06));
@@ -574,30 +588,50 @@ export const architectureGlsl = `
     if (structureDetail > 0.002) {
       vec4 mazeNode;
       vec2 mazeLocal;
-      float corridor = mazePlanDistance(local.xz, cell, width, depth, variant, mazeNode, mazeLocal);
+      float corridor = mazePlanDistance(local.xz, cell, width, depth, variant, 0.0, mazeNode, mazeLocal);
+      vec4 lowerMazeNode;
+      vec2 lowerMazeLocal;
+      float lowerCorridor = mazePlanDistance(local.xz, cell, width, depth, variant, 1.0, lowerMazeNode, lowerMazeLocal);
       float firstRow = stairEnd - 1.2;
-      float lastRow = -depth * 0.78;
+      float lastRow = -depth * ${MAZE_DEPTH_END.toFixed(2)};
       float ceilingUnderside = -0.8 - fract(hash21(cell + 76.2) + uCeilingVariation * 0.41) * 0.55;
-      bool courtyardNode = mazeNode.a > 0.5 && mazeNode.a < 254.5 && undergroundView;
+      bool courtyardNode = mazeNode.a > 0.5 && mazeNode.a < 200.5 && undergroundView;
       float ceilingBoundary = courtyardNode ? -1000.0 : local.y - ceilingUnderside;
       float cavity = max(corridor, max(-5.1 - local.y, ceilingBoundary));
       float envelope = boxDistance(
         local - vec3(0.0, -2.3, (firstRow + 2.1 + lastRow - mazeRearMargin(depth)) * 0.5),
-        vec3(width * 0.5, 2.8, (firstRow + 2.1 - lastRow + mazeRearMargin(depth)) * 0.5)
+        vec3(width * ${MAZE_WIDTH_HALF.toFixed(2)}, 2.8, (firstRow + 2.1 - lastRow + mazeRearMargin(depth)) * 0.5)
       );
       float shell = max(envelope, -cavity);
       shell = max(shell, -stairVoid);
+      float lowerCavity = max(lowerCorridor, max(-10.7 - local.y, local.y + 6.4));
+      float lowerEnvelope = boxDistance(
+        local - vec3(0.0, -7.9, (firstRow + 2.1 + lastRow - mazeRearMargin(depth)) * 0.5),
+        vec3(width * ${MAZE_WIDTH_HALF.toFixed(2)}, 2.8, (firstRow + 2.1 - lastRow + mazeRearMargin(depth)) * 0.5)
+      );
+      shell = min(shell, max(lowerEnvelope, -lowerCavity));
+      vec2 lowerStair = lowerStairGeometry(local, mazeNode, mazeLocal, vec2(width * ${MAZE_WIDTH_STEP.toFixed(2)}, (depth * ${(MAZE_DEPTH_END - 0.14).toFixed(2)} - 1.2) / ${(MAZE_SIZE - 1).toFixed(1)}));
+      shell = max(shell, -lowerStair.x);
+      shell = min(shell, lowerStair.y);
       vec4 ecology = ecologyDataForCell(cell);
-      if (ecology.b < 0.5 && ecology.a > 0.0) {
-        vec3 bagPoint = local - vec3(stairX, -UNDERGROUND_DESCENT + 0.92, stairEnd - 2.4);
-        seedBagMass = ellipsoidDistance(bagPoint, vec3(0.34, 0.42, 0.26));
-        seedBagMass = min(seedBagMass, ellipsoidDistance(bagPoint - vec3(0.0, 0.38, 0.0), vec3(0.16, 0.15, 0.14)));
-        seedBagSurface = step(seedBagMass, shell);
-        shell = min(shell, seedBagMass);
+      for (int bagFloor = 0; bagFloor < 2; bagFloor++) {
+        float floorValue = float(bagFloor);
+        float bagNode = floor((bagFloor == 0 ? ecology.r : ecology.b) * 255.0 + 0.5) - 1.0;
+        if (bagNode < 0.0) continue;
+        vec2 bagGrid = vec2(mod(bagNode, ${MAZE_SIZE.toFixed(1)}), floor(bagNode / ${MAZE_SIZE.toFixed(1)}));
+        vec2 bagSpacing = vec2(width * ${MAZE_WIDTH_STEP.toFixed(2)}, (depth * ${(MAZE_DEPTH_END - 0.14).toFixed(2)} - 1.2) / ${(MAZE_SIZE - 1).toFixed(1)});
+        vec2 bagCenter = vec2((bagGrid.x - ${((MAZE_SIZE - 1) / 2).toFixed(1)}) * bagSpacing.x + (variant > 0.5 ? 1.0 : -1.0) * width * 0.05,
+          -depth * 0.14 - 1.2 - bagGrid.y * bagSpacing.y);
+        vec3 bagPoint = local - vec3(bagCenter.x, -UNDERGROUND_DESCENT * (floorValue + 1.0) + 0.92, bagCenter.y);
+        float bag = ellipsoidDistance(bagPoint, vec3(0.34, 0.42, 0.26));
+        bag = min(bag, ellipsoidDistance(bagPoint - vec3(0.0, 0.38, 0.0), vec3(0.16, 0.15, 0.14)));
+        seedBagSurface = max(seedBagSurface, step(bag, min(shell, seedBagMass)));
+        seedBagMass = min(seedBagMass, bag);
       }
+      shell = min(shell, seedBagMass);
       float marker = 1000.0;
       if (courtyardNode) {
-        vec2 spacing = vec2(width * 0.17, (depth * 0.64 - 1.2) / 4.0);
+        vec2 spacing = vec2(width * ${MAZE_WIDTH_STEP.toFixed(2)}, (depth * ${(MAZE_DEPTH_END - 0.14).toFixed(2)} - 1.2) / ${(MAZE_SIZE - 1).toFixed(1)});
         float courtyardShape = floor((mazeNode.a - 1.0) / 48.0);
         float columns = courtyardShape > 1.5 ? 4.0 : 3.0;
         float rows = courtyardShape > 0.5 ? 3.0 : 2.0;
@@ -636,12 +670,16 @@ export const architectureGlsl = `
         courtyardExitSurface = step(courtyardExitMass, min(shell, min(courtyardStoneMass, min(courtyardRockMass, min(courtyardSoilMass, courtyardFoliageMass)))));
         shell = min(shell, courtyardDecor);
       }
-      if (mazeNode.b > 0.0 && mazeNode.a > 0.0) {
-        vec3 portalPoint = vec3(mazeLocal.x, local.y + 3.78, mazeLocal.y);
+      bool lowerLevel = local.y < -UNDERGROUND_DESCENT;
+      vec4 portalNode = lowerLevel ? lowerMazeNode : mazeNode;
+      vec2 portalLocal = lowerLevel ? lowerMazeLocal : mazeLocal;
+      float portalFloor = lowerLevel ? 1.0 : 0.0;
+      if (portalNode.b > 0.5 && portalNode.b < 2.5 && portalNode.a > 0.0) {
+        vec3 portalPoint = vec3(portalLocal.x, local.y + 3.78 + portalFloor * UNDERGROUND_DESCENT, portalLocal.y);
         float portalTime = mod(uTime * uMotionScale, 628.31854);
-        float breathPhase = portalTime * 1.22 + mazeNode.b * 2.0;
+        float breathPhase = portalTime * 1.22 + portalNode.b * 2.0 + portalFloor * 1.7;
         float breath = sin(breathPhase) * 0.72 + sin(breathPhase * 2.0 - 1.1) * 0.2;
-        float spasm = sin(portalTime * 4.2 + mazeNode.b * 4.3) * sin(breathPhase) * 0.014;
+        float spasm = sin(portalTime * 4.2 + portalNode.b * 4.3) * sin(breathPhase) * 0.014;
         vec3 breathingPoint = portalPoint;
         breathingPoint.xz /= 1.0 + breath * 0.2;
         breathingPoint.y /= 1.0 + breath * 0.24;

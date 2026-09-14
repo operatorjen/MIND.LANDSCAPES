@@ -1,4 +1,4 @@
-import { hashMaze } from './maze.js'
+import { hashMaze, mazeForLayout } from './maze.js'
 import { terrainHeightAt, structureLayout } from './spatial-layout.js'
 import { STRUCTURE_CELL_SIZE, UNDERGROUND_DESCENT } from '../config/world.js'
 import { isCultivationCell, plantingCenter } from './ecology-layout.js'
@@ -13,9 +13,19 @@ export const BAG_REACH = 2
 export const FULL_GROWTH_LIGHT_SECONDS = 240
 
 export const SEED_TYPES = Object.freeze([
-  Object.freeze({ id: 'moonbell', label: 'Moonbell', description: 'Pearl bells on slender blue-green stems.', color: '#b9d9ff' }),
-  Object.freeze({ id: 'ribbonFern', label: 'Ribbon fern', description: 'Copper-veined leaves that unfold in fans.', color: '#70c9a0' }),
-  Object.freeze({ id: 'emberThistle', label: 'Ember thistle', description: 'A dark stalk crowned with warm luminous florets.', color: '#ff8a5b' })
+  Object.freeze({ id: 'moonbell', label: 'Moonbell', description: 'Pearl bells on slender blue-green stems.', color: '#b9d9ff', form: 0 }),
+  Object.freeze({ id: 'ribbonFern', label: 'Ribbon fern', description: 'Copper-veined leaves that unfold in fans.', color: '#70c9a0', form: 1 }),
+  Object.freeze({ id: 'emberThistle', label: 'Ember thistle', description: 'A dark stalk crowned with warm luminous florets.', color: '#ff8a5b', form: 2 }),
+  Object.freeze({ id: 'silverlace', label: 'Silverlace', description: 'Lavender bells veined with fernlike silver.', color: '#c8b8ff', form: 0, requires: ['moonbell', 'ribbonFern'] }),
+  Object.freeze({ id: 'cinderbloom', label: 'Cinderbloom', description: 'Rose-coral florets held above copper-green leaves.', color: '#ff6f91', form: 2, requires: ['ribbonFern', 'emberThistle'] }),
+  Object.freeze({ id: 'auroraCup', label: 'Aurora cup', description: 'Cool turquoise cups with ember-gold throats.', color: '#73e0d1', form: 0, requires: ['moonbell', 'emberThistle'] }),
+  Object.freeze({ id: 'ghostLantern', label: 'Ghost lantern', description: 'Iridescent white bells fading into dusk violet.', color: '#d9efff', form: 0, requires: ['silverlace', 'moonbell'] }),
+  Object.freeze({ id: 'copperVeil', label: 'Copper veil', description: 'Layered jade fronds crossed by warm metallic veins.', color: '#d39a62', form: 1, requires: ['silverlace', 'ribbonFern'] }),
+  Object.freeze({ id: 'hearthPlume', label: 'Hearth plume', description: 'Amber plumes rising from wine-dark foliage.', color: '#ffb347', form: 2, requires: ['cinderbloom', 'emberThistle'] }),
+  Object.freeze({ id: 'prismReed', label: 'Prism reed', description: 'Sea-green fronds with cool spectral tips.', color: '#72d7ff', form: 1, requires: ['auroraCup', 'ribbonFern'] }),
+  Object.freeze({ id: 'velvetStar', label: 'Velvet star', description: 'Plum florets opening toward pale rose centers.', color: '#c77dff', form: 2, requires: ['cinderbloom', 'moonbell'] }),
+  Object.freeze({ id: 'glassFern', label: 'Glass fern', description: 'Translucent mint leaflets edged in soft copper.', color: '#8ef0c7', form: 1, requires: ['copperVeil', 'auroraCup'] }),
+  Object.freeze({ id: 'eclipseRose', label: 'Eclipse rose', description: 'Midnight petals ignited by a sunset-gold heart.', color: '#ff7096', form: 0, requires: ['ghostLantern', 'hearthPlume'] })
 ])
 
 export function nextAvailableSeed(inventory, selectedSeed) {
@@ -34,6 +44,7 @@ export function emptyEcologyDocument(seed) {
     inventory: Object.fromEntries(SEED_TYPES.map(({ id }) => [id, 0])),
     selectedSeed: SEED_TYPES[0].id,
     collectedBags: [],
+    buildingVisits: {},
     discoveredPockets: [],
     plantings: [],
     stats: {
@@ -60,17 +71,30 @@ export function normalizeEcologyDocument(document, seed) {
     discoveredKeys.add(key)
     return true
   }).map(({ cellX, cellZ }) => ({ cellX, cellZ })) : []
-  const plantings = Array.isArray(document.plantings) ? document.plantings.filter((plant) => {
-    return plant && types.has(plant.species) && Number.isInteger(plant.cellX) && Number.isInteger(plant.cellZ)
-  }).map((plant) => ({
-    id: String(plant.id || plantingId(plant.cellX, plant.cellZ)),
-    cellX: plant.cellX,
-    cellZ: plant.cellZ,
-    species: plant.species,
-    growth: clamp(Number(plant.growth), 0.025, 1),
-    plantedAt: String(plant.plantedAt || new Date(0).toISOString())
-  })) : []
+  const plantings = []
+  const plotSpecies = new Map()
+  for (const plant of Array.isArray(document.plantings) ? document.plantings : []) {
+    if (!plant || !types.has(plant.species) || !Number.isInteger(plant.cellX) || !Number.isInteger(plant.cellZ)) continue
+    const key = plantingId(plant.cellX, plant.cellZ)
+    const species = plotSpecies.get(key) || new Set()
+    if (species.size >= 2 || species.has(plant.species)) continue
+    const slot = species.size
+    species.add(plant.species)
+    plotSpecies.set(key, species)
+    plantings.push({
+      id: plantingId(plant.cellX, plant.cellZ, slot),
+      cellX: plant.cellX,
+      cellZ: plant.cellZ,
+      species: plant.species,
+      growth: clamp(Number(plant.growth), 0.025, 1),
+      plantedAt: String(plant.plantedAt || new Date(0).toISOString())
+    })
+  }
   const inventory = Object.fromEntries(SEED_TYPES.map(({ id }) => [id, Math.max(0, Math.floor(Number(document.inventory?.[id]) || 0))]))
+  const buildingVisits = Object.fromEntries(Object.entries(document.buildingVisits || {}).flatMap(([key, visits]) => {
+    const value = Math.max(0, Math.floor(Number(visits) || 0))
+    return /^-?\d+:-?\d+$/.test(key) && value ? [[key, value]] : []
+  }))
   const storedSelection = types.has(document.selectedSeed) ? document.selectedSeed : SEED_TYPES[0].id
   const selectedSeed = inventory[storedSelection] > 0 ? storedSelection : nextAvailableSeed(inventory, storedSelection) || storedSelection
   return {
@@ -81,6 +105,7 @@ export function normalizeEcologyDocument(document, seed) {
     inventory,
     selectedSeed,
     collectedBags,
+    buildingVisits,
     discoveredPockets,
     plantings,
     stats: {
@@ -107,6 +132,7 @@ export class EcologyState {
     this.document = document
     this.listeners = new Set()
     this.revision = 1
+    this.bagRevision = 1
   }
 
   subscribe(listener) {
@@ -132,6 +158,7 @@ export class EcologyState {
     }
     this.document.stats.bagsCollected++
     this.document.stats.collectedByType[bag.species]++
+    this.bagRevision++
     this.changed()
     await this.repository.save(this.document)
     return true
@@ -145,9 +172,20 @@ export class EcologyState {
     return true
   }
 
+  visitBuilding(layout) {
+    if (!layout) return false
+    const key = buildingKey(layout.cellX, layout.cellZ)
+    this.document.buildingVisits[key] = (this.document.buildingVisits[key] || 0) + 1
+    this.bagRevision++
+    this.changed()
+    this.checkpoint().catch(() => {})
+    return true
+  }
+
   async useSeed(seed) {
     if (this.document.seed === seed) return false
     this.document = emptyEcologyDocument(seed)
+    this.bagRevision++
     this.changed()
     await this.repository.save(this.document)
     return true
@@ -156,10 +194,11 @@ export class EcologyState {
   async plant(pocket) {
     let species = this.document.selectedSeed
     if (this.document.inventory[species] < 1) species = nextAvailableSeed(this.document.inventory, species)
-    if (!pocket || !species || this.plantingAt(pocket.cellX, pocket.cellZ)) return null
+    const plot = pocket ? this.plantingsAt(pocket.cellX, pocket.cellZ) : []
+    if (!pocket || !species || plot.length >= 2 || plot.some((plant) => plant.species === species)) return null
     this.document.selectedSeed = species
     const plant = {
-      id: plantingId(pocket.cellX, pocket.cellZ),
+      id: plantingId(pocket.cellX, pocket.cellZ, plot.length),
       cellX: pocket.cellX,
       cellZ: pocket.cellZ,
       species,
@@ -192,12 +231,17 @@ export class EcologyState {
     }
     this.document.stats.sunlightSeconds += sunlight
     this.document.stats.plantsMatured += matured
+    if (matured) this.bagRevision++
     if (visibleChange || matured) this.changed(false)
     return visibleChange || matured
   }
 
   plantingAt(cellX, cellZ) {
     return this.document.plantings.find((plant) => plant.cellX === cellX && plant.cellZ === cellZ) || null
+  }
+
+  plantingsAt(cellX, cellZ) {
+    return this.document.plantings.filter((plant) => plant.cellX === cellX && plant.cellZ === cellZ)
   }
 
   isPocketDiscovered(cellX, cellZ) {
@@ -261,9 +305,13 @@ export function discoveredAvailablePlantingPockets(settings, seed, ecology, cach
 }
 
 export function plantedPlantingPockets(settings, seed, ecology, cache) {
+  const seen = new Set()
   return ecology.document.plantings.flatMap((plant) => {
+    const id = plantingId(plant.cellX, plant.cellZ)
+    if (seen.has(id)) return []
+    seen.add(id)
     const pocket = plantingPocket(plant.cellX, plant.cellZ, settings, seed, cache)
-    return pocket ? [{ ...pocket, plant }] : []
+    return pocket ? [{ ...pocket, plants: ecology.plantingsAt(plant.cellX, plant.cellZ) }] : []
   })
 }
 
@@ -290,25 +338,62 @@ function findNearestPlantingPocket(position, settings, seed, ecology, cache, max
   return { ...nearest, y: terrainHeightAt(nearest.x, nearest.z, settings, seed, cache) }
 }
 
-export function seedBagForLayout(layout, cache) {
-  if (!layout) return null
-  if (cache) return cache.remember('seedBag', layout, () => seedBagForLayout(layout))
-  const side = layout.variant > 0.5 ? 1 : -1
-  const localX = side * layout.width * 0.22
-  const localZ = -layout.depth * 0.14 - 2.4
+export function seedBagForLayout(layout, ecology, cache) {
+  return seedBagsForLayout(layout, ecology, cache)[0] || null
+}
+
+export function seedBagsForLayout(layout, ecology, cache) {
+  if (!layout) return []
+  const generation = ecology?.document.buildingVisits?.[buildingKey(layout.cellX, layout.cellZ)] || 0
+  const cacheKey = `${layout.cellX},${layout.cellZ}:${generation}`
+  const bags = cache
+    ? cache.remember('seedBags', cacheKey, () => [0, 1].map((floor) => seedBagCandidateForLayout(layout, generation, floor)))
+    : [0, 1].map((floor) => seedBagCandidateForLayout(layout, generation, floor))
+  return bags.flatMap((bag) => {
+    if (!bag) return []
+    if (seedTypeUnlocked(bag.type, ecology)) return [bag]
+    const type = SEED_TYPES[hashIndex(hashMaze(`${bag.id}:base-fallback`), 3)]
+    return [{ ...bag, species: type.id, type }]
+  })
+}
+
+function seedBagCandidateForLayout(layout, generation, floor) {
+  const maze = mazeForLayout(layout, floor)
+  const nodes = maze.nodes.filter((node) => node.id !== maze.entry && !node.portal && !node.courtyardTile && !node.lowerStair)
+  if (!nodes.length) return null
+  const identity = `${layout.cellX},${layout.cellZ}:${layout.mazeRecipe.seed}:${generation}:${floor}`
+  const typeRoll = hashMaze(`${identity}:seed-type`)
+  const typeIndex = !floor || hashFraction(typeRoll) < 0.5
+    ? hashIndex(typeRoll, 3) : 3 + hashIndex(hashMaze(`${identity}:hybrid-type`), SEED_TYPES.length - 3)
+  const type = SEED_TYPES[typeIndex]
+  const node = nodes[hashIndex(hashMaze(`${identity}:seed-node`), nodes.length)]
   const cosine = Math.cos(layout.angle)
   const sine = Math.sin(layout.angle)
-  const typeIndex = hashMaze(`${layout.cellX},${layout.cellZ}:${layout.mazeRecipe.seed}:seed-bag`) % SEED_TYPES.length
   return {
-    id: `bag:${layout.cellX}:${layout.cellZ}`,
+    id: `bag:${layout.cellX}:${layout.cellZ}:${generation}:${floor}`,
     cellX: layout.cellX,
     cellZ: layout.cellZ,
-    x: layout.centerX + cosine * localX - sine * localZ,
-    y: layout.ground - UNDERGROUND_DESCENT + 0.42,
-    z: layout.centerZ + sine * localX + cosine * localZ,
-    species: SEED_TYPES[typeIndex].id,
-    type: SEED_TYPES[typeIndex]
+    node: node.id,
+    floor,
+    x: layout.centerX + cosine * node.x - sine * node.z,
+    y: layout.ground - UNDERGROUND_DESCENT * (floor + 1) + 0.42,
+    z: layout.centerZ + sine * node.x + cosine * node.z,
+    species: type.id,
+    type
   }
+}
+
+export function seedTypeUnlocked(type, ecology) {
+  if (!type?.requires?.length) return true
+  if (!ecology) return false
+  const plots = new Map()
+  for (const plant of ecology.document.plantings) {
+    if (plant.growth < 1) continue
+    const key = plantingId(plant.cellX, plant.cellZ)
+    if (!plots.has(key)) plots.set(key, new Set())
+    plots.get(key).add(plant.species)
+  }
+  return [...plots.values()].some((species) => type.requires.every((required) => species.has(required)))
 }
 
 export function nearestSeedBag(position, settings, seed, ecology, cache) {
@@ -316,10 +401,12 @@ export function nearestSeedBag(position, settings, seed, ecology, cache) {
   const baseZ = Math.floor((position.z + STRUCTURE_CELL_SIZE * 0.5) / STRUCTURE_CELL_SIZE)
   let nearest = null
   for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
-    const bag = seedBagForLayout(structureLayout(baseX + dx, baseZ + dz, settings, seed, cache), cache)
-    if (!bag || ecology.hasBag(bag.id)) continue
-    const distance = Math.hypot(position.x - bag.x, position.y - bag.y, position.z - bag.z)
-    if (distance <= BAG_REACH && (!nearest || distance < nearest.distance)) nearest = { ...bag, distance }
+    const bags = seedBagsForLayout(structureLayout(baseX + dx, baseZ + dz, settings, seed, cache), ecology, cache)
+    for (const bag of bags) {
+      if (ecology.hasBag(bag.id)) continue
+      const distance = Math.hypot(position.x - bag.x, position.y - bag.y, position.z - bag.z)
+      if (distance <= BAG_REACH && (!nearest || distance < nearest.distance)) nearest = { ...bag, distance }
+    }
   }
   return nearest
 }
@@ -328,8 +415,20 @@ export function daylightAmount(dayPhase, daylightSetting) {
   return (0.5 + 0.5 * Math.sin(dayPhase)) * 0.84 + daylightSetting * 0.16
 }
 
-export function plantingId(cellX, cellZ) {
-  return `plant:${cellX}:${cellZ}`
+export function plantingId(cellX, cellZ, slot = 0) {
+  return `plant:${cellX}:${cellZ}${slot ? `:${slot}` : ''}`
+}
+
+function buildingKey(cellX, cellZ) {
+  return `${cellX}:${cellZ}`
+}
+
+function hashFraction(value) {
+  return value / 4294967296
+}
+
+function hashIndex(value, length) {
+  return Math.min(length - 1, Math.floor(hashFraction(value) * length))
 }
 
 function smoothstep(low, high, value) {

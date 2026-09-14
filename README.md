@@ -2,11 +2,11 @@
 
 A persistent generative landscape shaped by images and text.
 
-![Landscape view](screenshots/screen-13.v.1.0.0.alpha.6.png)
+![Landscape view](screenshots/screen-16.v.1.0.0.alpha.7.png)
 
-![Hallway with portal sphere](screenshots/screen-14.v.1.0.0.alpha.6.png)
+![Seed inventory](screenshots/screen-17.v.1.0.0.alpha.7.png)
 
-![Indoor courtyard](screenshots/screen-15.v.1.0.0.alpha.6.png)
+![Indoor courtyard](screenshots/screen-18.v.1.0.0.alpha.7.png)
 
 ## Challenge
 
@@ -66,7 +66,16 @@ Open [http://localhost:8000](http://localhost:8000).
 - Drag and drop images, Markdown files, text files, or selected text to reshape the world.
 - Use **Choose files** as an alternative to drag and drop.
 - Open **World**, or press C, to review influences, adjust rendering quality and the day/night cycle, edit generated settings, remove memories, or export the world document.
+- Open **Seeds** to review collected seed bags, choose a plant species, and see cultivation statistics.
 - Compatible browsers and headsets can enter through WebXR when available.
+
+## Cultivation
+
+Generated buildings contain collectible seed bags for Moonbells, Ribbon ferns, and Ember thistles. Bags inherit the identifying color of their species and occupy different rooms across both underground floors. Leaving and re-entering a building advances its saved visit generation, replacing the previous visit’s bags with a fresh stable arrangement instead of moving them while the player explores. Carry them outside and follow the planting beacons to protected, sun-accessible ground. A nearby planting pocket illuminates on the landscape; press E to plant the selected seed. When one seed type runs out, the inventory automatically advances to the next available type.
+
+Each plot supports two different plants. Growing a specific pair to maturity on the same plot reveals its hybrid seed bags inside buildings; separate plots or partially grown parents do not unlock them. Ten hybrids—Silverlace, Cinderbloom, Aurora cup, Ghost lantern, Copper veil, Hearth plume, Prism reed, Velvet star, Glass fern, and Eclipse rose—form a branching progression from the three base species. Locked recipes remain visible in the seed inventory so the next pairing is discoverable.
+
+Plants grow gradually from a small root or stem as daylight passes, persist between sessions, and remain marked by warm navigation beacons after planting. Mature plants resolve into close detail—scalloped bell blooms, paired fern leaflets, or individual thistle florets—with species-specific stature, spread, crown scale, and coordinated palettes. Darker stems, analogous foliage gradients, complementary blooms, and fine veins or filaments make nearby parts readable, while distant specimens use simplified silhouettes or disappear.
 
 ## How influences work
 
@@ -82,7 +91,7 @@ The generated world settings can be reviewed and edited from the **World** panel
 
 The landscape and its influences are stored locally in IndexedDB, allowing the world to be restored across sessions in the same browser and site origin. The maze is saved as a compact versioned recipe (seed, media fingerprint and generation parameters), rather than a large geometry or portal table. Given that recipe and a building address, its rooms and portal links reconstruct deterministically. Exported worlds include the recipe.
 
-Building stairs lead into branching Backrooms-style networks with broad hallways, blind corners, loops, uneven rooms and two portal locations per building. Every room connects back to the stairs. Portals have directed, source-specific destinations, so they can jump past nearby buildings and need not form reciprocal pairs. Arrival positions face into a clear corridor and sit outside portal activation zones.
+Building stairs lead into branching 7 × 7 Backrooms-style networks with broad hallways, blind corners, loops, uneven rooms and two portal locations per floor. A second flight selected from a traversable first-floor corridor descends into an independently generated lower 7 × 7 network. Every room on both floors connects back to its stairs. Portals have directed, source-specific destinations, so they can jump past nearby buildings and need not form reciprocal pairs. Arrival positions preserve the source floor, face into a clear corridor, and sit outside portal activation zones.
 
 Media content changes the layout seed; interpreted psychedelic, mechanical, ritual, ornate, sandy and abandoned qualities also bias turns, loops, room sizes and portal reach. Adding, replacing or removing media regenerates the recipe. Reloading, changing rendering quality or adjusting the day cycle retains it. There is no per-frame randomness or database write. Clearing site storage removes the saved world; export it to retain a portable copy.
 
@@ -98,7 +107,7 @@ As buildings resolve, sparse moss and climbing vines emerge on exterior wall fac
 
 Low renders 78% of the stable tree set and 55% of minor plants, Medium renders 92% and 80%, and High renders the full population. Branch generations grow outward continuously as the viewer approaches. Each profile also scales the distance at which roots, branches, leaflets, and surface detail are evaluated.
 
-Nearby maze connectivity is streamed as a 55 × 55 byte RGBA texture (about 12 KB), rebuilt only when the camera crosses a structure cell or world settings change. CPU collision checks share the generated graph and use bounded caches. Geometry settings and maze connectivity update together, while colors and atmospheric settings can still interpolate.
+Nearby two-floor maze connectivity is streamed as a 77 × 154 byte RGBA texture (about 47 KB), rebuilt only when the camera crosses a structure cell or world settings change. CPU collision checks share the generated graphs and use bounded caches. Geometry settings and maze connectivity update together, while colors and atmospheric settings can still interpolate.
 
 When no API key is configured, media processing falls back to the deterministic local analyzer.
 

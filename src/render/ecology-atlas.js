@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { ECOLOGY_ATLAS_CELLS, ECOLOGY_ATLAS_RADIUS, SEED_TYPES, seedBagForLayout } from '../world/ecology.js'
+import { ECOLOGY_ATLAS_CELLS, ECOLOGY_ATLAS_RADIUS, SEED_TYPES, seedBagsForLayout } from '../world/ecology.js'
 import { structureLayout } from '../world/spatial-layout.js'
 import { STRUCTURE_CELL_SIZE } from '../config/world.js'
 import { SpatialQueries } from '../world/spatial-queries.js'
@@ -10,6 +10,8 @@ export class EcologyAtlas {
     this.ecology = ecology
     this.spatial = new SpatialQueries()
     this.data = new Uint8Array(ECOLOGY_ATLAS_CELLS * ECOLOGY_ATLAS_CELLS * 4)
+    this.bagData = new Uint8Array(this.data.length)
+    this.plantSlots = new Uint8Array(ECOLOGY_ATLAS_CELLS * ECOLOGY_ATLAS_CELLS)
     this.texture = new THREE.DataTexture(this.data, ECOLOGY_ATLAS_CELLS, ECOLOGY_ATLAS_CELLS)
     this.texture.minFilter = THREE.NearestFilter
     this.texture.magFilter = THREE.NearestFilter
@@ -22,28 +24,31 @@ export class EcologyAtlas {
     const z = Math.floor((position.z + STRUCTURE_CELL_SIZE * 0.5) / STRUCTURE_CELL_SIZE) - ECOLOGY_ATLAS_RADIUS
     const settingsChanged = this.spatial.update(settings, seed)
     if (!settingsChanged && x === this.x && z === this.z && this.revision === this.ecology.revision) return
-    const windowChanged = settingsChanged || x !== this.x || z !== this.z
+    const bagsChanged = settingsChanged || x !== this.x || z !== this.z || this.bagRevision !== this.ecology.bagRevision
     this.x = x
     this.z = z
     this.revision = this.ecology.revision
-    if (windowChanged) {
-      this.data.fill(0)
+    if (bagsChanged) {
+      this.bagRevision = this.ecology.bagRevision
+      this.bagData.fill(0)
+      const collected = new Set(this.ecology.document.collectedBags)
       for (let row = 0; row < ECOLOGY_ATLAS_CELLS; row++) for (let column = 0; column < ECOLOGY_ATLAS_CELLS; column++) {
-        const bag = seedBagForLayout(structureLayout(x + column, z + row, settings, seed, this.spatial), this.spatial)
-        if (bag) this.data[(row * ECOLOGY_ATLAS_CELLS + column) * 4 + 3] = SEED_TYPES.indexOf(bag.type) + 1
+        const offset = (row * ECOLOGY_ATLAS_CELLS + column) * 4
+        for (const bag of seedBagsForLayout(structureLayout(x + column, z + row, settings, seed, this.spatial), this.ecology, this.spatial)) {
+          if (collected.has(bag.id)) continue
+          this.bagData[offset + bag.floor * 2] = bag.node + 1
+          this.bagData[offset + bag.floor * 2 + 1] = SEED_TYPES.indexOf(bag.type) + 1
+        }
       }
     }
-    for (let offset = 0; offset < this.data.length; offset += 4) this.data.fill(0, offset, offset + 3)
+    this.data.set(this.bagData)
+    this.plantSlots.fill(0)
     for (const plant of this.ecology.document.plantings) {
       const offset = this.cellOffset(plant.cellX, plant.cellZ)
       if (offset < 0) continue
-      this.data[offset] = SEED_TYPES.findIndex(({ id }) => id === plant.species) + 1
-      this.data[offset + 1] = Math.round(plant.growth * 255)
-    }
-    for (const id of this.ecology.document.collectedBags) {
-      const [, cellX, cellZ] = id.split(':')
-      const offset = this.cellOffset(Number(cellX), Number(cellZ))
-      if (offset >= 0) this.data[offset + 2] = 255
+      const slot = this.plantSlots[offset / 4]++
+      this.data[offset + slot * 2] = SEED_TYPES.findIndex(({ id }) => id === plant.species) + 1
+      this.data[offset + slot * 2 + 1] = Math.round(plant.growth * 255)
     }
     this.uniforms.uEcologyOrigin.value.set(x, z)
     this.texture.needsUpdate = true

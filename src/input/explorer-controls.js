@@ -21,6 +21,8 @@ const SLIDE_DAMPING = 0.18
 const BLOCKED_DAMPING = 0.35
 const RECOVERY_DAMPING = 0.12
 const PORTAL_COOLDOWN = 1.4
+const POSITION_STORAGE_KEY = 'mind-landscape-position'
+const POSITION_SAVE_SECONDS = 2
 
 export class ExplorerControls {
   constructor(canvas, camera, getSettings, getSeed) {
@@ -43,6 +45,8 @@ export class ExplorerControls {
     this.spatial = new SpatialQueries()
     this.spatial.update(settings, seed)
     this.camera.position.set(0, this.eyeHeightAt(0, INITIAL_DISTANCE, settings, seed), INITIAL_DISTANCE)
+    this.saveElapsed = 0
+    this.restorePosition(seed)
     this.bind()
     this.applyRotation()
   }
@@ -71,7 +75,11 @@ export class ExplorerControls {
       this.keys.add(event.code)
     }
     this.handleKeyUp = (event) => this.keys.delete(event.code)
-    this.handleBlur = () => this.keys.clear()
+    this.handleSavePosition = () => this.savePosition()
+    this.handleVisibilityChange = () => {
+      if (globalThis.document?.hidden) this.savePosition()
+    }
+    this.handleBlur = () => { this.keys.clear(); this.savePosition() }
 
     this.canvas.addEventListener('pointerdown', this.handlePointerDown)
     this.canvas.addEventListener('pointermove', this.handlePointerMove)
@@ -80,6 +88,30 @@ export class ExplorerControls {
     window.addEventListener('keydown', this.handleKeyDown)
     window.addEventListener('keyup', this.handleKeyUp)
     window.addEventListener('blur', this.handleBlur)
+    window.addEventListener('pagehide', this.handleSavePosition)
+    globalThis.document?.addEventListener('visibilitychange', this.handleVisibilityChange)
+  }
+
+  restorePosition(seed) {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(POSITION_STORAGE_KEY))
+      if (saved?.version !== 1 || saved.seed !== seed || ![saved.x, saved.y, saved.z, saved.yaw, saved.pitch].every(Number.isFinite)) return
+      this.camera.position.set(saved.x, saved.y, saved.z)
+      this.yaw = saved.yaw
+      this.pitch = THREE.MathUtils.clamp(saved.pitch, MIN_PITCH, MAX_PITCH)
+      this.portalCooldown = PORTAL_COOLDOWN
+    } catch {}
+  }
+
+  savePosition() {
+    const { x, y, z } = this.camera.position
+    if (![x, y, z, this.yaw, this.pitch].every(Number.isFinite)) return
+    try {
+      const saved = JSON.stringify({ version: 1, seed: this.getSeed(), x, y, z, yaw: this.yaw, pitch: this.pitch })
+      if (saved === this.savedPosition) return
+      window.localStorage.setItem(POSITION_STORAGE_KEY, saved)
+      this.savedPosition = saved
+    } catch {}
   }
 
   applyRotation() {
@@ -87,6 +119,11 @@ export class ExplorerControls {
   }
 
   update(delta) {
+    this.saveElapsed += delta
+    if (this.saveElapsed >= POSITION_SAVE_SECONDS) {
+      this.saveElapsed = 0
+      this.savePosition()
+    }
     if (this.portalTransition) {
       const transition = this.portalTransition
       transition.elapsed += delta
@@ -227,7 +264,8 @@ export class ExplorerControls {
     this.velocity.z = sine * velocityX + cosine * velocityZ
     this.camera.position.setX(destination.x)
     this.camera.position.setZ(destination.z)
-    this.camera.position.y = this.spatial.terrainHeightAt(destination.x, destination.z) + EYE_HEIGHT
+    this.camera.position.y = Number.isFinite(destination.y)
+      ? destination.y : this.spatial.terrainHeightAt(destination.x, destination.z) + EYE_HEIGHT
     if (Number.isFinite(destination.yaw)) {
       this.yaw = destination.yaw
       this.velocity.set(0, 0, 0)
@@ -281,6 +319,7 @@ export class ExplorerControls {
   }
 
   dispose() {
+    this.savePosition()
     this.canvas.removeEventListener('pointerdown', this.handlePointerDown)
     this.canvas.removeEventListener('pointermove', this.handlePointerMove)
     this.canvas.removeEventListener('pointerup', this.handlePointerUp)
@@ -288,6 +327,8 @@ export class ExplorerControls {
     window.removeEventListener('keydown', this.handleKeyDown)
     window.removeEventListener('keyup', this.handleKeyUp)
     window.removeEventListener('blur', this.handleBlur)
+    window.removeEventListener('pagehide', this.handleSavePosition)
+    globalThis.document?.removeEventListener('visibilitychange', this.handleVisibilityChange)
     this.keys.clear()
     this.spatial.maps.clear()
   }

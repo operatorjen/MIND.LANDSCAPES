@@ -28,7 +28,7 @@ Baseline date: **2026-09-10**
 | OpenAI Analytics screenshot | Work/Codex agentic activity over a 30-day account-level window | aggregate; not a project-only ledger |
 | Human-time estimate | active development time | approximate phase-level estimate |
 | Purchase / subscription record | direct cash expenditure | direct spend is exact for the documented period; does not represent the full value of inference consumed |
-| Reset / promotional usage record | non-cash inference capacity available during the documented period | records one official OpenAI reset and two additional free weekly reset credits; reset capacity is separate from direct cash expenditure |
+| Reset / promotional usage record | non-cash inference capacity available during the documented period | records one official OpenAI reset and three additional free weekly reset credits; reset capacity is separate from direct cash expenditure |
 
 The OpenAI Analytics window is broader than the tagged release interval and may contain activity unrelated to MIND.LANDSCAPES. It therefore cannot be used to calculate exact credits, turns, or plugin calls per release.
 

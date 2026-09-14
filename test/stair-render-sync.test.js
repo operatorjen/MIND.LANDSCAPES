@@ -3,12 +3,15 @@ import test from 'node:test'
 import { STAIR_WIDTH } from '../src/config/world.js'
 import { architectureGlsl } from '../src/render/glsl/architecture.glsl.js'
 import { mazeGlsl } from '../src/render/glsl/maze.glsl.js'
+import { terrainGlsl } from '../src/render/glsl/terrain.glsl.js'
 import { concreteAggregateGlsl } from '../src/render/materials/concrete-aggregate.glsl.js'
 
 test('rendered stair openings share the collision passage width', () => {
   assert.equal(STAIR_WIDTH, 1.55)
   assert.match(architectureGlsl, /vec3\(STAIR_WIDTH, 3\.35, stairHalfDepth\)/)
   assert.match(mazeGlsl, new RegExp(`vec2\\(${STAIR_WIDTH.toFixed(2)},`))
+  assert.match(mazeGlsl, /float lowerStairProgress/)
+  assert.match(terrainGlsl, /height = min\(height, ground - UNDERGROUND_DESCENT \* \(1\.0 \+ lowerStep\)\)/)
 })
 
 test('non-power-of-two concrete texture repeats in shader coordinates', () => {

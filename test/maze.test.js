@@ -1,7 +1,8 @@
 import { PLAYER_RADIUS, MAZE_HALL_HALF_WIDTH, MAZE_ROOM_MIN_HALF_WIDTH } from '../src/config/navigation.js'
+import { STAIR_WIDTH } from '../src/config/world.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, portalArrival, courtyardExitForLayout } from '../src/world/maze.js'
+import { MAZE_FLOORS, MAZE_SIZE, lowerStairAt, mazeRecipe, mazeForLayout, mazeDistance, mazeCollisionDistance, portalArrival, courtyardExitForLayout } from '../src/world/maze.js'
 import { structureLayout, terrainHeightAt, walkingSurfaceAt, isPositionBlocked, portalDestinationAt } from '../src/world/spatial-layout.js'
 import { deriveSettings, normalizeDocument, WorldState } from '../src/world/world-state.js'
 
@@ -70,7 +71,7 @@ test('every maze room and door is connected, traversable, and has collision clea
     const layout = structureLayout(sample % 9 - 4, Math.floor(sample / 9) - 4, settings, seed)
     if (!layout) continue
     const maze = mazeForLayout(layout)
-    assert.equal(Object.keys(maze.paths).length, 25)
+    assert.equal(Object.keys(maze.paths).length, MAZE_SIZE ** 2)
     assert.equal(maze.portals.length, 2)
     for (const node of maze.nodes) {
       assert.ok(mazeDistance(node, layout) < -0.46)
@@ -78,7 +79,7 @@ test('every maze room and door is connected, traversable, and has collision clea
       const point = worldPoint(layout, node)
       assert.ok(Math.abs(terrainHeightAt(point.x, point.z, settings, seed) - (layout.ground - 5.6)) < 1e-8)
       assert.equal(isPositionBlocked(point, settings, seed, 0.46), false)
-      for (const [bit, offset] of [[1, 1], [2, -1], [4, -5], [8, 5]]) {
+      for (const [bit, offset] of [[1, 1], [2, -1], [4, -MAZE_SIZE], [8, MAZE_SIZE]]) {
         if (!(node.mask & bit)) continue
         const neighbor = maze.nodes[node.id + offset]
         assert.ok(neighbor)
@@ -133,6 +134,73 @@ test('upper-floor walkers stay above the maze and stairs select the lower floor'
   assert.ok(Math.abs(walkingSurfaceAt(point.x, point.z, layout.ground - 3.78, settings, seed) - (layout.ground - 5.6)) < 1e-8)
   const stairs = worldPoint(layout, { x: (layout.variant > 0.5 ? 1 : -1) * layout.width * 0.22, z: layout.depth * 0.05 })
   assert.ok(walkingSurfaceAt(stairs.x, stairs.z, layout.ground + 1.82, settings, seed) < layout.ground)
+})
+
+test('a second stair flight joins an independently connected lower maze and its portals', () => {
+  assert.equal(MAZE_FLOORS, 2)
+  let checked = 0
+  for (let sample = 1; sample <= 40; sample++) {
+    const seed = sample / 41
+    const settings = settingsFor(seed)
+    const layout = structureLayout(sample % 9 - 4, Math.floor(sample / 9) - 4, settings, seed)
+    if (!layout) continue
+    const upper = mazeForLayout(layout, 0)
+    const lower = mazeForLayout(layout, 1)
+    const stair = upper.lowerStair
+    const top = upper.nodes[stair.top]
+    const bottom = upper.nodes[stair.bottom]
+    const stairLength = Math.hypot(bottom.x - top.x, bottom.z - top.z)
+    const stairDx = (bottom.x - top.x) / stairLength
+    const stairDz = (bottom.z - top.z) / stairLength
+    assert.ok(Math.abs(stair.bottom - stair.top) === 1 || Math.abs(stair.bottom - stair.top) === MAZE_SIZE)
+    assert.equal((bottom.mask & (bottom.mask - 1)), 0)
+    assert.ok(top.lowerStair >= 240 && top.lowerStair <= 243)
+    assert.ok(bottom.lowerStair >= 244 && bottom.lowerStair <= 247)
+    assert.equal(top.portal || top.courtyardTile, 0)
+    assert.equal(bottom.portal || bottom.courtyardTile, 0)
+    assert.equal(lower.entry, stair.bottom)
+    assert.ok(lower.nodes[lower.entry].mask & [1, 2, 4, 8][stair.direction])
+    const landing = lower.nodes[stair.bottom]
+    assert.equal(landing.room, 255)
+    assert.ok(bitCount(landing.mask) >= 2, 'Lower stair should open into a visible junction')
+    for (let distance = 0; distance <= stairLength * 3; distance += 0.15) {
+      const landing = { x: bottom.x + stairDx * distance, z: bottom.z + stairDz * distance }
+      assert.ok(mazeDistance(landing, layout, 1) < -PLAYER_RADIUS)
+}
+
+function bitCount(value) {
+  let count = 0
+  for (let bits = value; bits; bits >>>= 1) count += bits & 1
+  return count
+}
+    assert.equal(Object.keys(lower.paths).length, MAZE_SIZE ** 2)
+    assert.equal(lower.portals.length, 2)
+    assert.equal(lower.courtyard, undefined)
+    assert.ok(lower.nodes.some((node, index) => node.mask !== upper.nodes[index].mask))
+    for (let step = 0; step <= 10; step++) {
+      const progress = step / 10
+      const local = { x: top.x + (bottom.x - top.x) * progress, z: top.z + (bottom.z - top.z) * progress }
+      const point = worldPoint(layout, local, layout.ground - 5.6 * (1 + progress) + 1.82)
+      assert.ok(Math.abs(lowerStairAt(local, layout).progress - progress) < 0.001)
+      assert.ok(Math.abs(walkingSurfaceAt(point.x, point.z, point.y, settings, seed) - (layout.ground - 5.6 * (1 + progress))) < 0.001)
+      assert.equal(isPositionBlocked(point, settings, seed, PLAYER_RADIUS), false)
+      if (progress > 0 && progress < 1) {
+        const wallOffset = STAIR_WIDTH - PLAYER_RADIUS * 0.5
+        const wallLocal = { x: local.x + stairDz * wallOffset, z: local.z - stairDx * wallOffset }
+        assert.equal(lowerStairAt(wallLocal, layout, PLAYER_RADIUS), null)
+      }
+    }
+    for (const node of lower.nodes) {
+      assert.ok(mazeDistance(node, layout, 1) < -PLAYER_RADIUS)
+      assert.equal(isPositionBlocked(worldPoint(layout, node, layout.ground - 11.2 + 1.82), settings, seed, PLAYER_RADIUS), false)
+    }
+    const portal = lower.portals[0]
+    const destination = portalDestinationAt(worldPoint(layout, portal, layout.ground - 11.2 + 1.82), settings, seed)
+    assert.ok(destination)
+    assert.ok(destination.y < layout.ground - 5.6)
+    checked++
+  }
+  assert.ok(checked > 15)
 })
 
 

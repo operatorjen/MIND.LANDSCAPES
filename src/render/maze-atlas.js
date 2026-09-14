@@ -1,18 +1,19 @@
 import * as THREE from 'three'
 import { structureLayout } from '../world/spatial-layout.js'
-import { mazeForLayout, MAZE_SIZE } from '../world/maze.js'
+import { MAZE_FLOORS, mazeForLayout, MAZE_SIZE } from '../world/maze.js'
 import { SpatialQueries } from '../world/spatial-queries.js'
 import { STRUCTURE_CELL_SIZE } from '../config/world.js'
 
 export const MAZE_ATLAS_RADIUS = 5
 export const MAZE_ATLAS_CELLS = MAZE_ATLAS_RADIUS * 2 + 1
 export const MAZE_ATLAS_PIXELS = MAZE_ATLAS_CELLS * MAZE_SIZE
+export const MAZE_ATLAS_HEIGHT = MAZE_ATLAS_PIXELS * MAZE_FLOORS
 
 export class MazeAtlas {
   constructor(uniforms) {
     this.spatial = new SpatialQueries()
-    this.data = new Uint8Array(MAZE_ATLAS_PIXELS ** 2 * 4)
-    this.texture = new THREE.DataTexture(this.data, MAZE_ATLAS_PIXELS, MAZE_ATLAS_PIXELS)
+    this.data = new Uint8Array(MAZE_ATLAS_PIXELS * MAZE_ATLAS_HEIGHT * 4)
+    this.texture = new THREE.DataTexture(this.data, MAZE_ATLAS_PIXELS, MAZE_ATLAS_HEIGHT)
     this.texture.minFilter = THREE.NearestFilter
     this.texture.magFilter = THREE.NearestFilter
     this.texture.generateMipmaps = false
@@ -31,17 +32,15 @@ export class MazeAtlas {
     for (let row = 0; row < MAZE_ATLAS_CELLS; row++) for (let column = 0; column < MAZE_ATLAS_CELLS; column++) {
       const layout = structureLayout(x + column, z + row, settings, seed, this.spatial)
       if (!layout) continue
-      const maze = mazeForLayout(layout)
-      for (const node of maze.nodes) {
-        const pixelX = column * MAZE_SIZE + node.id % MAZE_SIZE
-        const pixelY = row * MAZE_SIZE + Math.floor(node.id / MAZE_SIZE)
-        const offset = (pixelY * MAZE_ATLAS_PIXELS + pixelX) * 4
-        this.data[offset] = node.mask
-        this.data[offset + 1] = node.room
-        this.data[offset + 2] = node.portal
-        // Alpha remains a validity byte; values below 254 encode courtyard tiles, style and footprint.
-        this.data[offset + 3] = node.courtyardTile || 255
-      }
+      for (let floor = 0; floor < MAZE_FLOORS; floor++) for (const node of mazeForLayout(layout, floor).nodes) {
+          const pixelX = column * MAZE_SIZE + node.id % MAZE_SIZE
+          const pixelY = floor * MAZE_ATLAS_PIXELS + row * MAZE_SIZE + Math.floor(node.id / MAZE_SIZE)
+          const offset = (pixelY * MAZE_ATLAS_PIXELS + pixelX) * 4
+          this.data[offset] = node.mask
+          this.data[offset + 1] = node.room
+          this.data[offset + 2] = node.lowerStair || node.portal
+          this.data[offset + 3] = node.courtyardTile || 255
+        }
     }
     this.uniforms.uMazeOrigin.value.set(x, z)
     this.texture.needsUpdate = true

@@ -23,6 +23,8 @@ export const grassGeometryGlsl = `
     float radius = mix(0.10, 0.64, opening) * mix(0.78, 1.08, sizeRoll);
     float bloom = 1000.0;
     float lastLayer = sizeRoll < 0.16 ? 0.0 : sizeRoll < 0.45 ? 1.0 : 2.0;
+    float bloomAngle = atan(q.z, q.x);
+    float bloomRadius = length(q.xz);
     for (int layer = 0; layer < 3; layer++) {
       float ring = float(layer);
       if (ring > lastLayer) continue;
@@ -31,10 +33,9 @@ export const grassGeometryGlsl = `
         : species < 2.5 ? 5.0 + ring * 2.0 : 17.0;
       petals = max(4.0, floor(petals * mix(0.68, 1.0, sizeRoll) + 0.5));
       vec3 petal = q;
-      float angle = atan(petal.z, petal.x);
       float sector = 6.2831853 / petals;
-      float folded = mod(angle + sector * 0.5 + ring * (species < 1.5 ? 0.36 : 0.24), sector) - sector * 0.5;
-      petal.xz = vec2(cos(folded), sin(folded)) * length(petal.xz);
+      float folded = mod(bloomAngle + sector * 0.5 + ring * (species < 1.5 ? 0.36 : 0.24), sector) - sector * 0.5;
+      petal.xz = vec2(cos(folded), sin(folded)) * bloomRadius;
       float reach = radius * (species < 0.5 ? 0.34 + ring * 0.17
         : species < 1.5 ? 0.48 + ring * 0.13
         : species < 2.5 ? 0.3 + ring * 0.16 : 0.58 + ring * 0.16);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { architectureGlsl } from '../src/render/glsl/architecture.glsl.js'
+import { sceneGlsl } from '../src/render/glsl/scene.glsl.js'
 import { lightingGlsl } from '../src/render/glsl/lighting.glsl.js'
 
 test('architecture continuously morphs from a weathered boulder into the detailed structure', () => {
@@ -15,7 +16,7 @@ test('architecture continuously morphs from a weathered boulder into the detaile
 
 test('underground courtyards open a sky shaft only underground and use dedicated stone, soil and foliage surfaces', () => {
   assert.match(architectureGlsl, /indoorCourtyardDistance/)
-  assert.match(architectureGlsl, /mazeNode\.a > 0\.5 && mazeNode\.a < 254\.5/)
+  assert.match(architectureGlsl, /mazeNode\.a > 0\.5 && mazeNode\.a < 200\.5/)
   assert.match(architectureGlsl, /courtyardOffset/)
   assert.match(architectureGlsl, /columns \* 0\.5 - 0\.04/)
   assert.match(architectureGlsl, /ceilingBoundary = courtyardNode \? -1000\.0/)
@@ -32,6 +33,17 @@ test('underground courtyards open a sky shaft only underground and use dedicated
   assert.match(lightingGlsl, /const int courtyardReflectionSteps = 8/)
   assert.match(lightingGlsl, /const int courtyardReflectionSteps = 20/)
   assert.match(lightingGlsl, /const int courtyardReflectionSteps = 28/)
+})
+
+test('the lower stairwell includes solid descending treads as well as carved headroom', () => {
+  assert.match(architectureGlsl, /vec2 lowerStairGeometry/)
+  assert.match(architectureGlsl, /vec2\(cavity, mass\)/)
+  assert.match(architectureGlsl, /shell = max\(shell, -lowerStair\.x\)/)
+  assert.match(architectureGlsl, /shell = min\(shell, lowerStair\.y\)/)
+})
+
+test('stacked underground floors replace the terrain solid with architecture geometry', () => {
+  assert.match(sceneGlsl, /terrain < 0\.0 && dryStructureInterior\(point\)/)
 })
 
 test('portal motion uses a bounded periodic phase and flow field', () => {

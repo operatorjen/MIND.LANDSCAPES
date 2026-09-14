@@ -431,6 +431,7 @@ h1 {
 .inventory-dialog {
   width: min(620px, calc(100vw - 30px));
   max-width: none;
+  max-height: calc(100vh - 30px);
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 16px;
@@ -446,6 +447,8 @@ h1 {
 }
 
 .inventory-shell {
+  max-height: calc(100vh - 30px);
+  overflow-y: auto;
   padding-bottom: 22px;
 }
 

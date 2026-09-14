@@ -28,9 +28,9 @@ export const materialCatalog = Object.freeze([
     appliesTo: 'persistent protected outdoor planting pockets',
     materialRange: Object.freeze([MATERIAL_BOUNDARY.succulent, MATERIAL_BOUNDARY.grass]),
     mapping: 'camera-local ecology atlas with daylight growth and distance LOD',
-    outputs: Object.freeze(['moonbell', 'ribbon-fern', 'ember-thistle', 'seedling', 'mature-crown']),
+    outputs: Object.freeze(['coordinated-stems', 'coordinated-foliage', 'moonbell', 'ribbon-fern', 'ember-thistle', 'seedling', 'mature-crown']),
     textureInputs: Object.freeze(['local ecology state atlas']),
-    controls: Object.freeze({ species: 3, growthStages: 255, renderDistance: 68 }),
+    controls: Object.freeze({ species: 13, growthStages: 255, renderDistance: 68 }),
     shader: cultivatedPlantsGlsl
   }),
   Object.freeze({

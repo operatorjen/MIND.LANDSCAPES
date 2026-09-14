@@ -10,6 +10,7 @@ export const sceneGlsl = `
   float sampleScene(vec3 point, out float material, out vec3 componentDistances) {
     float terrainSurface = terrainHeight(point.xz);
     float terrain = point.y - terrainSurface;
+    if (terrain < 0.0 && dryStructureInterior(point)) terrain = 1000.0;
     float forestMaterial;
     float forest = forestDistance(point, terrainSurface, forestMaterial);
     float architectureMaterial;

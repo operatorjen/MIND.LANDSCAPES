@@ -14,6 +14,7 @@ import {
   TUNNEL_FACTOR_MIN
 } from '../src/config/world.js'
 import { deriveSettings } from '../src/world/world-state.js'
+import { mazeDistance, mazeForLayout } from '../src/world/maze.js'
 
 const CASES = 64
 const RADIUS = 0.34
@@ -95,8 +96,14 @@ test('randomized underground paths agree with collision and portal layout', () =
       assert.equal(isPositionBlocked(position, settings, seed, RADIUS), false)
     }
 
-    const middle = path[6]
-    const wall = worldPoint(layout, layout.width * 0.48, -layout.depth * 0.4, layout.ground - 3.4)
+    const maze = mazeForLayout(layout)
+    let wallLocal
+    for (let row = 0; row < 18 && !wallLocal; row++) for (let column = 0; column < 18; column++) {
+      const candidate = { x: -layout.width * 0.65 + column * layout.width * 1.3 / 17, z: maze.startZ - row * maze.stepZ * 6 / 17 }
+      if (mazeDistance(candidate, layout) > RADIUS) { wallLocal = candidate; break }
+    }
+    assert.ok(wallLocal)
+    const wall = worldPoint(layout, wallLocal.x, wallLocal.z, layout.ground - 3.4)
     assert.equal(isPositionBlocked(wall, settings, seed, RADIUS), true)
 
     const portal = undergroundPathAt(layout, 1)
